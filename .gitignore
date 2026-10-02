@@ -1,0 +1,3 @@
+seed.local.js
+*.local.test.js
+node_modules/
