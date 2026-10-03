@@ -273,47 +273,18 @@ export function renderAccounts(state, today) {
   const months = B.monthsStatus(state, today);
   const out = [header('Accounts', '', `<button class="btn small" data-act="transfer">${icon.swap(16)} Transfer</button>`)];
 
-  out.push(`<button class="card tap" data-act="goto" data-tab="insights">
+  // Four short cards. Each opens its own screen with the details and actions.
+  const card = (page, title, amount, sub, red = false) => `<button class="card tap" data-act="open-page" data-page="${page}">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <div><div class="tiny">Budget</div><div class="sub">This month, ${esc(B.periodLabel(pid))}</div></div>
-      <span class="chev muted">${icon.right(18)}</span>
+      <div class="tiny">${esc(title)}</div><span class="chev muted">${icon.right(18)}</span>
     </div>
-    <div style="font-size:34px;margin-top:6px">${big(p.remaining, p.level === 'over' ? 'red' : '')}</div>
-  </button>`);
-
-  const pots = [...sal.pots].reverse();
-  out.push(`<div class="card">
-    <div class="tiny">Salary</div>
-    <div style="font-size:34px;margin-top:2px">${big(sal.totals.balance)}</div>
-    <div class="sub">${fmt(sal.totals.reserved)} for stocks · ${fmt(sal.totals.free)} free</div>
-    <div class="list" style="margin-top:6px">
-      ${pots.map((x) => row({
-    title: x.label || 'Salary',
-    sub: [x.receivedOn ? `Received ${B.dm(x.receivedOn)}` : '', x.reserved > 0.004 ? `${fmt(x.reserved)} for stocks` : ''].filter(Boolean).join(' · '),
-    amount: x.balance, signed: false, act: `data-act="open-pot" data-id="${esc(x.id)}"`, right: `<span class="chev">${icon.right(18)}</span>`,
-  })).join('')}
-      <button class="row add-row" data-act="log-salary"><span class="bubble">${icon.plus(18)}</span><span class="grow">Log salary</span></button>
-    </div>
-  </div>`);
-
-  out.push(`<div class="card">
-    <div class="tiny">Other expenses</div>
-    <div style="font-size:34px;margin-top:2px">${big(oth.totals.balance)}</div>
-    <div class="list" style="margin-top:6px">
-      ${oth.buckets.map((b) => row({
-    title: b.name, sub: b.spent > 0.004 ? `${fmt(b.spent)} spent` : '', amount: b.balance, signed: false,
-    act: `data-act="open-bucket" data-id="${esc(b.id)}"`, right: `<span class="chev">${icon.right(18)}</span>`,
-  })).join('')}
-      <button class="row add-row" data-act="new-bucket"><span class="bubble">${icon.plus(18)}</span><span class="grow">New category</span></button>
-    </div>
-  </div>`);
-
-  out.push(`<div class="card">
-    <div class="tiny">Stocks</div>
-    <div class="kv"><span>Sent so far</span><span>${fmt(st.sent)}</span></div>
-    <div class="kv"><span>Still to send from salary</span><span>${fmt(st.stillFromSalary)}</span></div>
-    <button class="btn wide" style="margin-top:10px" data-act="transfer" data-to="stocks">${icon.stocks(16)} Send to stocks</button>
-  </div>`);
+    <div style="font-size:32px;margin-top:4px">${big(amount, red ? 'red' : '')}</div>
+    <div class="sub">${esc(sub)}</div>
+  </button>`;
+  out.push(card('budget', 'Budget', p.remaining, `Left this month, ${B.periodLabel(pid)}`, p.level === 'over'));
+  out.push(card('salary', 'Salary', sal.totals.balance, `${fmt(sal.totals.reserved)} for stocks · ${fmt(sal.totals.free)} free`));
+  out.push(card('other', 'Other expenses', oth.totals.balance, oth.buckets.map((b) => b.name).join(', ') || 'No categories yet'));
+  out.push(card('stocks', 'Stocks', st.sent, `Sent so far · ${fmt(st.stillFromSalary)} still to send`));
 
   if (months.length) {
     out.push(`<div class="section-title"><h2>Past months</h2></div>`);

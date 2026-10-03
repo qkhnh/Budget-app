@@ -74,6 +74,9 @@
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
+/* Hide scrollbars everywhere; scrolling itself still works. */
+html, * { scrollbar-width: none; }
+::-webkit-scrollbar { display: none; width: 0; height: 0; }
 body {
   margin: 0;
   background: var(--bg);
@@ -241,7 +244,7 @@ details.add[open] > summary { margin-bottom: 10px; }
 .backdrop { position: fixed; inset: 0; z-index: 30; background: var(--backdrop); animation: fade .2s ease; }
 .sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 31;
-  max-height: 92dvh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  max-height: 92dvh; overflow-y: auto; overscroll-behavior: contain;
   background: var(--bg); border-radius: 22px 22px 0 0;
   padding: 10px 16px calc(env(safe-area-inset-bottom) + 18px);
 }
@@ -317,7 +320,9 @@ details.add[open] > summary { margin-bottom: 10px; }
 #toast span { flex: 1; }
 #toast button { font-weight: 700; text-decoration: underline; }
 
+.sheet.page.enter { animation: slide-in .26s cubic-bezier(.2, .8, .2, 1); }
 @keyframes rise { from { transform: translateY(100%); } }
+@keyframes slide-in { from { transform: translateX(100%); } }
 @keyframes fade { from { opacity: 0; } }
 @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

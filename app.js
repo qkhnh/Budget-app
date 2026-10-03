@@ -10,7 +10,7 @@ import { esc, fmt, icon, parseRefKey } from './ui.js';
 
 const KEY = 'budget-state-v1'; // storage key from the first version; the data inside carries its own version
 const THEME_KEY = 'budget-theme'; // 'system' | 'light' | 'dark', a per-phone display choice (not budget data)
-const APP_VERSION = '0.2.4';
+const APP_VERSION = '0.2.5';
 
 const $view = document.getElementById('view');
 const $tabs = document.getElementById('tabs');
@@ -119,29 +119,33 @@ function render() {
   renderSheets();
 }
 
+// Full-screen sheets cover everything; the others slide up from the bottom over a dimmed backdrop.
+const FULL_SHEETS = new Set(['entry', 'note', 'page-budget', 'page-salary', 'page-other', 'page-stocks']);
+
+// Draws the whole stack, so a detail sheet opened from a page shows on top of that page.
 function renderSheets() {
   const today = B.todayISO();
-  let top = ui.sheets.at(-1);
-  let html = top ? renderSheet(top, state, today) : null;
-  while (top && html === null) { // the thing the sheet showed was deleted
-    ui.sheets.pop();
-    top = ui.sheets.at(-1);
-    html = top ? renderSheet(top, state, today) : null;
+  const parts = [];
+  for (let i = 0; i < ui.sheets.length; i++) {
+    const sh = ui.sheets[i];
+    const html = renderSheet(sh, state, today);
+    if (html === null) { // the thing the sheet showed was deleted
+      ui.sheets.splice(i, 1);
+      i -= 1;
+      continue;
+    }
+    const full = FULL_SHEETS.has(sh.type);
+    const z = 30 + i * 2;
+    parts.push(`${full ? '' : `<div class="backdrop" style="z-index:${z}" data-act="close-sheet"></div>`}
+      <div class="sheet ${full ? 'full' : ''} ${sh.type.startsWith('page-') ? 'page' : ''} ${sh.fresh ? 'enter' : ''}" style="z-index:${z + 1}" role="dialog" aria-modal="true">${full ? '' : '<div class="grabber"></div>'}${html}</div>`);
+    sh.fresh = false;
   }
-  if (!top) {
-    $sheets.innerHTML = '';
-    document.body.classList.remove('locked');
-    return;
-  }
-  const full = top.type === 'entry' || top.type === 'note';
-  $sheets.innerHTML = `${full ? '' : '<div class="backdrop" data-act="close-sheet"></div>'}
-    <div class="sheet ${full ? 'full' : ''} ${top.fresh ? 'enter' : ''}" role="dialog" aria-modal="true">${full ? '' : '<div class="grabber"></div>'}${html}</div>`;
-  top.fresh = false;
-  document.body.classList.add('locked');
+  $sheets.innerHTML = parts.join('');
+  document.body.classList.toggle('locked', ui.sheets.length > 0);
 }
 
-function openSheet(sh) {
-  ui.sheets.push({ ...sh, fresh: true });
+function openSheet(sh, { animate = true } = {}) {
+  ui.sheets.push({ ...sh, fresh: animate });
   renderSheets();
 }
 
@@ -303,10 +307,18 @@ document.addEventListener('click', (e) => {
     case 'key':
       pressKey(ds.key);
       break;
-    case 'open-note':
-      openSheet({ type: 'note', note: top.note });
-      document.getElementById('note-input')?.focus();
+    case 'open-note': {
+      // No slide-in here: focusing a box that is still below the screen makes iOS scroll down to it.
+      openSheet({ type: 'note', note: top.note }, { animate: false });
+      const input = document.getElementById('note-input');
+      input?.focus({ preventScroll: true });
+      requestAnimationFrame(() => {
+        window.scrollTo(0, 0);
+        const sheet = input?.closest('.sheet');
+        if (sheet) sheet.scrollTop = 0;
+      });
       break;
+    }
     case 'pick-note':
       finishNote(ds.note);
       break;
@@ -349,6 +361,9 @@ document.addEventListener('click', (e) => {
       render();
       break;
     }
+    case 'open-page':
+      openSheet({ type: `page-${ds.page}` });
+      break;
     case 'open-pot':
       openSheet({ type: 'pot', id: ds.id });
       break;
