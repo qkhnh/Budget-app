@@ -9,7 +9,7 @@ import { renderSheet, amountHTML } from './sheets.js';
 import { esc, fmt, icon, parseRefKey } from './ui.js';
 
 const KEY = 'budget-state-v1'; // storage key from the first version; the data inside carries its own version
-const APP_VERSION = '0.2.2';
+const APP_VERSION = '0.2.3';
 
 const $view = document.getElementById('view');
 const $tabs = document.getElementById('tabs');
