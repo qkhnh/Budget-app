@@ -36,29 +36,11 @@ function budgetItems(state, periodId) {
     const other = B.accountName(state, incoming ? t.from : t.to);
     items.push({
       date: t.date, seq: seqOf(t.id), kind: incoming ? 'in' : t.to.type === 'stocks' ? 'stocks' : 'move',
-      title: incoming ? `From ${other}` : `To ${other}`, sub: t.note, amount: incoming ? t.amount : -t.amount,
+      title: t.note || (incoming ? `From ${other}` : `To ${other}`), amount: incoming ? t.amount : -t.amount,
       act: `data-act="open-transfer" data-id="${esc(t.id)}"`,
     });
   }
   return items.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.seq - a.seq);
-}
-
-// Items grouped by day, newest first, with the day's spending total (like Dime).
-function dayGroups(items, today, limit = Infinity) {
-  if (!items.length) return '<div class="empty">Nothing logged yet. Tap + to add a spend.</div>';
-  const shown = items.slice(0, limit);
-  const groups = [];
-  for (const it of shown) {
-    const key = it.date ?? 'earlier';
-    if (!groups.length || groups.at(-1).key !== key) groups.push({ key, items: [] });
-    groups.at(-1).items.push(it);
-  }
-  return groups.map((g) => {
-    const spent = sum(g.items.filter((i) => i.spend).map((i) => i.amount));
-    const label = g.key === 'earlier' ? 'Earlier' : dayLabel(g.key, today);
-    return `<div class="day-head"><span class="tiny">${esc(label)}</span><span class="tiny">${spent ? fmt(spent) : ''}</span></div>
-      <div class="list">${g.items.map(row).join('')}</div>`;
-  }).join('');
 }
 
 function gauge(p) {
@@ -118,7 +100,7 @@ function monthPill(m) {
 
 // ---- Home -----------------------------------------------------------------------
 
-export function renderHome(state, today) {
+export function renderHome(state, today, ui) {
   const d = B.dashboard(state, today);
   const p = d.period;
   const out = [header('This month', B.periodLabel(p.periodId))];
@@ -142,24 +124,35 @@ export function renderHome(state, today) {
     </div>`);
   } else {
     out.push(gauge(p));
-    out.push(`<div class="grid3">
+    out.push(`<div class="grid2">
       <div class="stat"><span class="tiny">Per day left</span><b>${fmt(p.perDayLeft)}</b></div>
       <div class="stat"><span class="tiny">Days left</span><b>${p.daysLeft}</b></div>
-      <div class="stat"><span class="tiny">Spent</span><b>${fmt(p.spent)}</b></div>
     </div>`);
   }
 
-  if (d.openMonths.length) {
-    out.push(`<div class="card"><div class="tiny">Months to sort out</div><div class="list">${d.openMonths.map((m) => row({
-      title: m.label, sub: monthRowSub(m), amount: m.remaining, signed: false,
-      act: `data-act="open-month" data-period="${esc(m.periodId)}"`, right: `<span class="chev">${icon.right(18)}</span>`,
-    })).join('')}</div></div>`);
-  }
-
   const items = budgetItems(state, p.periodId);
-  out.push(`<div class="section-title"><h2>Recent</h2>${items.length > 12 ? '<button class="sub" data-act="goto" data-tab="insights">See all</button>' : ''}</div>`);
-  out.push(`<div>${dayGroups(items, today, 12)}</div>`);
+  const shown = ui.homeAll ? items : items.slice(0, RECENT);
+  out.push('<div class="section-title"><h2>Recent transactions</h2></div>');
+  out.push(items.length
+    ? `<div class="tx-list">${shown.map((it) => `<button class="tx" ${it.act}>
+        <div class="grow"><div class="title">${esc(it.title)}</div><div class="sub">${esc(it.date ? dayLabel(it.date, today) : 'Earlier')}</div></div>
+        <div class="amt ${B.round2(it.amount) > 0 ? 'green' : ''}">${fmt(it.amount, { sign: true })}</div>
+      </button>`).join('')}</div>
+      ${items.length > RECENT ? `<button class="btn soft wide" data-act="toggle-recent">${ui.homeAll ? 'Show less' : `Show all ${items.length}`}</button>` : ''}`
+    : '<div class="empty">Nothing logged yet. Tap + to add a spend.</div>');
   return out.join('');
+}
+
+const RECENT = 8;
+
+// Finished months still holding money (or over budget) that K has not dealt with yet.
+function monthsToSortOut(state, today) {
+  const open = B.monthsStatus(state, today).filter((m) => m.status === 'open');
+  if (!open.length) return '';
+  return `<div class="card"><div class="tiny">Months to sort out</div><div class="list">${open.map((m) => row({
+    title: m.label, sub: monthRowSub(m), amount: m.remaining, signed: false,
+    act: `data-act="open-month" data-period="${esc(m.periodId)}"`, right: `<span class="chev">${icon.right(18)}</span>`,
+  })).join('')}</div></div>`;
 }
 
 // ---- Insights -------------------------------------------------------------------
@@ -265,13 +258,7 @@ export function renderInsights(state, today, ui) {
     out.push(`<div class="card"><div class="tiny" style="margin-bottom:8px">Where this month's money went</div>${breakdown(p)}</div>`);
   }
 
-  const items = mode === 'month'
-    ? budgetItems(state, pid)
-    : B.spendsBetween(state, range.start, range.end).map((s) => ({
-      date: s.date, seq: seqOf(s.id), spend: true, kind: 'out', title: s.note || 'Spend', amount: -s.amount,
-      act: `data-act="edit-spend" data-id="${esc(s.id)}"`,
-    })).sort((a, b) => b.date.localeCompare(a.date) || b.seq - a.seq);
-  out.push(`<div>${dayGroups(items, today)}</div>`);
+  out.push(monthsToSortOut(state, today));
   return out.join('');
 }
 
