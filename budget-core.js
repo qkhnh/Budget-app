@@ -331,6 +331,25 @@ export function spendByDay(state, start, end) {
   return days;
 }
 
+// Notes K has used before (spends and transfers), newest first, each once, for quick picking.
+export function recentNotes(state, limit = 9) {
+  const seq = (id) => Number(String(id).replace(/\D/g, '')) || 0;
+  const all = [...state.spends, ...state.transfers]
+    .filter((x) => String(x.note ?? '').trim())
+    .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || seq(b.id) - seq(a.id));
+  const seen = new Set();
+  const out = [];
+  for (const x of all) {
+    const note = x.note.trim();
+    const key = note.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(note);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Transfers between accounts
 // ---------------------------------------------------------------------------

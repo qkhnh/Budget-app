@@ -26,8 +26,11 @@
   color-scheme: light dark;
 }
 
+/* Dark tokens: used when the phone is in dark mode (unless Light is chosen in Settings),
+   or always when Dark is chosen. Keep both blocks the same. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #0f1a2b;     /* deep navy */
     --card: #1c2e4a;   /* midnight blue */
     --card-2: #2b405f;
@@ -37,6 +40,7 @@
     --line: #26395a;
     --ink: #d1cfc9;    /* main buttons: buttercream */
     --on-ink: #0f1a2b;
+    --seg-on: var(--card-2);
     --green: #86c9a0;
     --green-bg: rgba(134, 201, 160, .14);
     --red: #f08c84;
@@ -46,6 +50,27 @@
     --backdrop: rgba(0, 0, 0, .6);
   }
 }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1a2b;
+  --card: #1c2e4a;
+  --card-2: #2b405f;
+  --text: #e8e6e1;
+  --muted: #97a4b8;
+  --faint: #52677d;
+  --line: #26395a;
+  --ink: #d1cfc9;
+  --on-ink: #0f1a2b;
+  --seg-on: var(--card-2);
+  --green: #86c9a0;
+  --green-bg: rgba(134, 201, 160, .14);
+  --red: #f08c84;
+  --red-bg: rgba(240, 140, 132, .14);
+  --orange: #e9b44c;
+  --orange-bg: rgba(233, 180, 76, .15);
+  --backdrop: rgba(0, 0, 0, .6);
+}
+:root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -118,8 +143,9 @@ svg { display: block; }
 .pill.bad { background: var(--red-bg); color: var(--red); }
 .seg { display: inline-flex; background: var(--card); border-radius: 12px; padding: 3px; }
 .seg button { padding: 6px 14px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--muted); }
-.seg button.on { background: var(--bg); color: var(--text); }
-@media (prefers-color-scheme: dark) { .seg button.on { background: var(--card-2); } }
+.seg button.on { background: var(--seg-on, var(--bg)); color: var(--text); }
+.seg-wide { display: flex; }
+.seg-wide button { flex: 1; padding: 9px 14px; }
 
 /* ---- Lists --------------------------------------------------------------- */
 
@@ -248,6 +274,18 @@ details.add[open] > summary { margin-bottom: 10px; }
 .chip input[type="date"], .chip select { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; font-size: 16px; }
 .chip-input { align-self: center; height: 38px; padding: 0 12px; border-radius: 12px; border: 0; background: var(--card); text-align: center; width: min(260px, 100%); }
 .chip-input::placeholder { color: var(--muted); }
+.note-btn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.note-btn.empty-note { color: var(--muted); font-weight: 400; }
+
+/* Note screen: notes used before in a 3-column grid, like CommBank */
+.note-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.note-grid button {
+  min-height: 52px; padding: 8px 6px; border-radius: 14px; background: var(--card);
+  font-size: 14.5px; font-weight: 600; line-height: 1.2; text-align: center;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word;
+}
+.note-grid button:active { background: var(--card-2); }
+.text-btn { font-weight: 700; color: var(--text); padding: 8px 4px; flex: none; }
 .fromto { display: grid; gap: 0; background: var(--card); border-radius: 16px; padding: 2px 14px; }
 .fromto label { position: relative; display: flex; align-items: center; gap: 10px; padding: 11px 0; }
 .fromto label + label { border-top: 1px solid var(--line); }

@@ -38,6 +38,8 @@ function selectOptions(groups, selectedKey) {
 
 // ---- Keypad entry ---------------------------------------------------------------
 
+const noteButton = (sh) => `<button class="chip-input note-btn ${sh.note ? '' : 'empty-note'}" data-act="open-note">${esc(sh.note || 'Add a note')}</button>`;
+
 export function amountHTML(buf) {
   if (!buf) return '<span class="big placeholder"><span class="cur">$</span>0</span>';
   const [int, dec] = buf.split('.');
@@ -72,7 +74,7 @@ function entrySheet(sh, state, today) {
   let fromto = '';
   let chips = '';
   if (sh.mode === 'spend' || editing) {
-    chips = `<input class="chip-input" data-field="note" placeholder="Add a note" value="${esc(sh.note)}" maxlength="60" enterkeyhint="done">
+    chips = `${noteButton(sh)}
       <div class="chips">${dateChipHTML('date')}</div>`;
   } else if (sh.mode === 'salary') {
     const auto = B.salaryLabel(sh.earned);
@@ -90,7 +92,7 @@ function entrySheet(sh, state, today) {
       <label><span class="k">From</span><span class="v">${esc(B.accountName(state, sh.from))}</span>${icon.right(16)}<select data-field="from">${selectOptions(fromGroups, refKey(sh.from))}</select></label>
       <label><span class="k">To</span><span class="v">${esc(B.accountName(state, sh.to))}</span>${icon.right(16)}<select data-field="to">${selectOptions(toGroups, refKey(sh.to))}</select></label>
     </div>`;
-    chips = `<input class="chip-input" data-field="note" placeholder="Add a note" value="${esc(sh.note)}" maxlength="60" enterkeyhint="done">
+    chips = `${noteButton(sh)}
       <div class="chips">${dateChipHTML('date')}</div>`;
   }
 
@@ -254,6 +256,18 @@ function bucketFormSheet(sh, state) {
   </div>`;
 }
 
+// Tapping the note on the keypad screen opens this: notes used before (tap one to use it)
+// and a box to type a new one, like CommBank's description picker.
+function noteSheet(sh, state) {
+  const notes = B.recentNotes(state, 9);
+  return `<div class="inner">
+    ${head('Note', '<button class="text-btn" data-act="note-done">Done</button>')}
+    ${notes.length ? `<div class="tiny">Used before</div>
+    <div class="note-grid">${notes.map((n) => `<button data-act="pick-note" data-note="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
+    <input class="input" id="note-input" value="${esc(sh.note)}" placeholder="Type a note" maxlength="60" enterkeyhint="done" autocomplete="off">
+  </div>`;
+}
+
 function doneSheet(sh) {
   return `<div class="inner">
     ${head(`Tick off ${B.periodLabel(sh.periodId)}`)}
@@ -276,6 +290,7 @@ export function renderSheet(sh, state, today) {
     case 'edit-pot': return editPotSheet(sh, state, today);
     case 'bucket-form': return bucketFormSheet(sh, state);
     case 'done': return doneSheet(sh);
+    case 'note': return noteSheet(sh, state);
     default: return null;
   }
 }
