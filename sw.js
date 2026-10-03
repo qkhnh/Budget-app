@@ -2,6 +2,8 @@
 // Makes the app work offline.
 // - On install it saves the app files on the phone.
 // - Online: always fetch the newest file and refresh the saved copy (so updates just work).
+//   GitHub Pages lets browsers reuse a file for 10 minutes, so every fetch asks GitHub whether the
+//   file changed ('no-cache'); unchanged files come back as a tiny "not modified" answer.
 // - Offline: serve the saved copy.
 // Budget data is NOT stored here. It lives in localStorage, which this file never touches.
 
@@ -22,7 +24,8 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  const fresh = SHELL.map((url) => new Request(url, { cache: 'reload' }));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(fresh)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -38,7 +41,7 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
 
   event.respondWith(
-    fetch(req)
+    fetch(req.url, { cache: 'no-cache' })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();
