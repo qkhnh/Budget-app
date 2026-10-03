@@ -1,3 +1,6 @@
 seed.local.js
 *.local.test.js
+*.local.md
 node_modules/
+.claude/
+*.local.json
