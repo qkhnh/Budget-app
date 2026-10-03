@@ -219,6 +219,100 @@ function transferSheet(sh, state, today) {
   </div>`;
 }
 
+// ---- Account pages (open from the cards on Accounts) -----------------------------
+
+const pageHead = (title, right = '<span class="ghost"></span>') => `<div class="sheet-head">
+  <button class="icon-btn" data-act="close-sheet" aria-label="Back">${icon.left()}</button><h3>${esc(title)}</h3>${right}</div>`;
+
+const pageHero = (label, amount, sub = '') => `<div class="center" style="padding:8px 0 4px">
+  <div class="tiny">${esc(label)}</div>
+  <div style="font-size:44px">${big(amount, B.round2(amount) < 0 ? 'red' : '')}</div>
+  ${sub ? `<div class="sub">${esc(sub)}</div>` : ''}
+</div>`;
+
+const listRow = ({ title, sub = '', amount, act }) => `<button class="row" ${act}>
+  <div class="grow"><div class="title">${esc(title)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>
+  <div class="amt ${B.round2(amount) < 0 ? 'red' : ''}">${fmt(amount)}</div><span class="chev">${icon.right(18)}</span></button>`;
+
+function budgetPage(state, today) {
+  const pid = B.periodIdOf(today);
+  const p = B.periodSummary(state, pid, today);
+  const key = esc(refKey({ type: 'budget', periodId: pid }));
+  return `<div class="inner">
+    ${pageHead('Budget')}
+    ${pageHero(p.level === 'over' ? 'Over budget' : 'Left this month', p.remaining, B.periodLabel(pid))}
+    <div class="card" style="padding-top:6px;padding-bottom:6px">
+      <div class="kv"><span>Budget</span><span>${fmt(p.opening)}</span></div>
+      ${p.transfersIn ? `<div class="kv"><span>Moved in</span><span class="green">+${fmt(p.transfersIn)}</span></div>` : ''}
+      ${p.transfersOut ? `<div class="kv"><span>Moved out</span><span>${fmt(p.transfersOut)}</span></div>` : ''}
+      <div class="kv"><span>Spent</span><span>${fmt(p.spent)}</span></div>
+      <div class="kv"><span>Per day left</span><span>${fmt(p.perDayLeft)}</span></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn soft" data-act="transfer" data-to="${key}">${icon.up(16)} Add money</button>
+      <button class="btn soft" data-act="transfer" data-from="${key}">${icon.swap(16)} Move money</button>
+    </div>
+    <button class="btn soft wide" data-act="goto" data-tab="insights">${icon.chart(16)} See spending</button>
+    <div class="tiny">Moves this month</div>
+    ${activityList(state, { type: 'budget', periodId: pid }, today)}
+  </div>`;
+}
+
+function salaryPage(state) {
+  const sal = B.potLedger(state);
+  const pots = [...sal.pots].reverse();
+  return `<div class="inner">
+    ${pageHead('Salary')}
+    ${pageHero('Total salary', sal.totals.balance, `${fmt(sal.totals.reserved)} for stocks · ${fmt(sal.totals.free)} free`)}
+    <div class="btn-row">
+      <button class="btn" data-act="log-salary">${icon.plus(16)} Log salary</button>
+      <button class="btn soft" data-act="transfer" data-to="stocks">${icon.stocks(16)} To stocks</button>
+    </div>
+    <div class="tiny">Each month's pay</div>
+    <div class="card" style="padding-top:4px;padding-bottom:4px"><div class="list">
+      ${pots.map((x) => listRow({
+    title: x.label || 'Salary',
+    sub: [x.receivedOn ? `Received ${B.dm(x.receivedOn)}` : '', x.reserved > 0.004 ? `${fmt(x.reserved)} for stocks` : ''].filter(Boolean).join(' · '),
+    amount: x.balance, act: `data-act="open-pot" data-id="${esc(x.id)}"`,
+  })).join('') || '<div class="empty">No salary logged yet.</div>'}
+    </div></div>
+  </div>`;
+}
+
+function otherPage(state) {
+  const oth = B.bucketLedger(state);
+  return `<div class="inner">
+    ${pageHead('Other expenses')}
+    ${pageHero('Total set aside', oth.totals.balance)}
+    <button class="btn wide" data-act="new-bucket">${icon.plus(16)} New category</button>
+    <div class="tiny">Categories</div>
+    <div class="card" style="padding-top:4px;padding-bottom:4px"><div class="list">
+      ${oth.buckets.map((b) => listRow({
+    title: b.name, sub: b.spent > 0.004 ? `${fmt(b.spent)} spent` : '', amount: b.balance,
+    act: `data-act="open-bucket" data-id="${esc(b.id)}"`,
+  })).join('') || '<div class="empty">No categories yet.</div>'}
+    </div></div>
+  </div>`;
+}
+
+function stocksPage(state, today) {
+  const st = B.stocksSummary(state);
+  const deposits = [...st.deposits].reverse();
+  return `<div class="inner">
+    ${pageHead('Stocks')}
+    ${pageHero('Sent so far', st.sent, `${fmt(st.stillFromSalary)} still to send from salary`)}
+    <button class="btn wide" data-act="transfer" data-to="stocks">${icon.stocks(16)} Send to stocks</button>
+    <div class="tiny">Sent</div>
+    <div class="card" style="padding-top:4px;padding-bottom:4px"><div class="list">
+      ${deposits.map((t) => listRow({
+    title: `From ${B.accountName(state, t.from)}`,
+    sub: [t.date ? dayLabel(t.date, today) : 'Before the app', t.note].filter(Boolean).join(' · '),
+    amount: t.amount, act: `data-act="open-transfer" data-id="${esc(t.id)}"`,
+  })).join('') || '<div class="empty">Nothing sent yet.</div>'}
+    </div></div>
+  </div>`;
+}
+
 // ---- Small forms ----------------------------------------------------------------
 
 function editPotSheet(sh, state, today) {
@@ -291,6 +385,10 @@ export function renderSheet(sh, state, today) {
     case 'bucket-form': return bucketFormSheet(sh, state);
     case 'done': return doneSheet(sh);
     case 'note': return noteSheet(sh, state);
+    case 'page-budget': return budgetPage(state, today);
+    case 'page-salary': return salaryPage(state);
+    case 'page-other': return otherPage(state);
+    case 'page-stocks': return stocksPage(state, today);
     default: return null;
   }
 }
