@@ -7,10 +7,20 @@
 // - A budget period runs from the 28th to the next 28th (end date exclusive).
 //   Its id is the month of the starting 28th: '2026-09' = 2026-09-28 up to 2026-10-28.
 // - Every state-changing function returns a NEW state and leaves the old one untouched.
+//
+// Accounts work like bank accounts. Money moves between them with transfers.
+//   { type: 'budget', periodId }  one month's budget. Spends come out of here.
+//   { type: 'pot', potId }        one month's salary
+//   { type: 'bucket', bucketId }  one category in Other expenses (Birthday, Flights, ...)
+//   { type: 'stocks' }            money sent to the broker (only as "to")
+//   { type: 'out' }               money spent outside the monthly budget, e.g. bought the flights (only as "to")
+//   { type: 'in' }                new money from outside, e.g. from parents (only as "from")
+// Nothing ever moves by itself. Leftover stays in its month until K moves it.
 
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 const DAY_MS = 86400000;
+const EPS = 1e-9;
 const pad = (n) => String(n).padStart(2, '0');
 const sum = (xs) => xs.reduce((a, b) => a + b, 0);
 
@@ -27,6 +37,9 @@ export const money = (x) => {
   const r = round2(x);
   return `${r < 0 ? '-' : ''}$${Math.abs(r).toFixed(2)}`;
 };
+
+// 'YYYY-MM-DD' -> 'd/m', the way K writes dates.
+export const dm = (iso) => `${Number(iso.slice(8, 10))}/${Number(iso.slice(5, 7))}`;
 
 // ---------------------------------------------------------------------------
 // Dates and periods
@@ -59,6 +72,15 @@ export function addDays(s, n) {
   return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
 }
 
+// 0 = Sunday ... 6 = Saturday
+export const dayOfWeek = (s) => new Date(parseDate(s).ms).getUTCDay();
+
+// The Monday-to-Sunday week that contains the date (end exclusive).
+export function weekRange(date) {
+  const start = addDays(date, -((dayOfWeek(date) + 6) % 7));
+  return { start, end: addDays(start, 7) };
+}
+
 function parsePeriod(id) {
   const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(id));
   if (!m) throw new Error(`Invalid period id "${id}", expected YYYY-MM`);
@@ -86,6 +108,11 @@ export function periodRange(id) {
   return { start: `${id}-28`, end: `${shiftPeriod(id, 1)}-28` };
 }
 
+export function periodLabel(id) {
+  const { start, end } = periodRange(id);
+  return `${dm(start)} to ${dm(end)}`;
+}
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -95,21 +122,27 @@ export function emptyState() {
     version: STATE_VERSION,
     seq: 0,
     settings: {
-      stockMin: 500, // minimum of each month's salary to set aside for stocks
+      stockMin: 500, // minimum of each month's salary to send to stocks
       rentRemindDays: 2, // remind this many days before the 28th
-      ceilingWarnPct: 0.9, // warn when spending reaches this share of the ceiling
       rentPerMonth: null, // used for the rent reminder when no lump sum covers the period
     },
     lumpSums: [], // { id, firstPeriod, months, amount, rentPerMonth }
-    baseOverrides: {}, // fixed base budget for one period, wins over the lump sum: { '2026-09': 1121 }
+    baseOverrides: {}, // fixed base budget for one period, wins over the lump sum: { '2026-03': 900 }
     instalments: [], // { id, name, total, months, firstPeriod }
-    spends: [], // { id, date, amount, note }
-    pots: [], // salary pots: { id, label, amount, receivedOn, earnedPeriod, stockMin, spends: [{amount, note}] }
-    stockDeposits: [], // { id, date, parts: [{type:'pot', potId, amount} | {type:'leftover', periodId, amount}] }
-    periodOverrides: {}, // imported history: { '2026-08': { leftover: 208 } }
+    spends: [], // budget spends: { id, date, amount, note }
+    pots: [], // salary: { id, label, amount, receivedOn, earnedPeriod, stockMin }
+    buckets: [], // Other expenses categories: { id, name, closed? }
+    transfers: [], // { id, date, from, to, amount, note }  (date can be null for history from before the app)
+    periodOverrides: {}, // history from before the app: { '2026-08': { leftover: 208 } }
+    monthsDone: {}, // finished months K has ticked off: { '2026-08': { date, note } }
     rentPaid: {}, // { '2026-09': '2026-09-28' }  (key = period whose 28th the rent is due)
-    irregular: [], // { id, name, amount, date, status: 'planned' | 'paid' }
   };
+}
+
+export function isEmpty(state) {
+  return !state.lumpSums.length && !Object.keys(state.baseOverrides).length && !state.pots.length
+    && !state.spends.length && !state.buckets.length && !state.transfers.length
+    && !Object.keys(state.periodOverrides).length;
 }
 
 function update(state, fn) {
@@ -129,13 +162,28 @@ function assertAmount(n, what = 'amount') {
   }
 }
 
+function assertName(name, what = 'Name') {
+  const n = String(name ?? '').trim();
+  if (!n) throw new Error(`${what} cannot be empty`);
+  return n;
+}
+
+function assertMonths(n) {
+  if (!Number.isInteger(n) || n < 1 || n > 60) throw new Error('months must be a whole number from 1 to 60');
+}
+
+function findOrThrow(list, id, what) {
+  const x = list.find((i) => i.id === id);
+  if (!x) throw new Error(`No ${what} with id "${id}"`);
+  return x;
+}
+
 export function updateSettings(state, patch) {
   return update(state, (d) => {
     for (const [k, v] of Object.entries(patch)) {
       if (!(k in d.settings)) throw new Error(`Unknown setting "${k}"`);
-      if (k === 'stockMin' && !(typeof v === 'number' && v >= 0)) throw new Error('stockMin must be 0 or more');
+      if (k === 'stockMin' && !(typeof v === 'number' && Number.isFinite(v) && v >= 0)) throw new Error('stockMin must be 0 or more');
       if (k === 'rentRemindDays' && !(Number.isInteger(v) && v >= 0 && v <= 7)) throw new Error('rentRemindDays must be 0 to 7');
-      if (k === 'ceilingWarnPct' && !(typeof v === 'number' && v > 0 && v <= 1)) throw new Error('ceilingWarnPct must be above 0 and at most 1');
       if (k === 'rentPerMonth' && !(v === null || (typeof v === 'number' && v > 0))) throw new Error('rentPerMonth must be a positive number');
       d.settings[k] = v;
     }
@@ -143,7 +191,7 @@ export function updateSettings(state, patch) {
 }
 
 // ---------------------------------------------------------------------------
-// Base budget and fixed (upfront) items
+// Plans: lump sums, base overrides, instalments
 // ---------------------------------------------------------------------------
 
 export function lumpFor(state, periodId) {
@@ -156,7 +204,31 @@ export function lumpFor(state, periodId) {
   );
 }
 
-// Monthly budget excluding rent. A per-period override wins (used for the last month of the old budget).
+export function addLumpSum(state, { firstPeriod, months, amount, rentPerMonth }) {
+  parsePeriod(firstPeriod);
+  assertMonths(months);
+  assertAmount(amount, 'lump sum');
+  if (!(typeof rentPerMonth === 'number' && Number.isFinite(rentPerMonth) && rentPerMonth >= 0)) {
+    throw new Error('rent per month must be 0 or more');
+  }
+  if (rentPerMonth * months >= amount) throw new Error('Rent would use up the whole lump sum');
+  for (let k = 0; k < months; k++) {
+    const id = shiftPeriod(firstPeriod, k);
+    if (lumpFor(state, id)) throw new Error(`A lump sum already covers ${periodLabel(id)}`);
+  }
+  return update(state, (d) => {
+    d.lumpSums.push({ id: nextId(d, 'lump'), firstPeriod, months, amount, rentPerMonth });
+  });
+}
+
+export function removeLumpSum(state, id) {
+  findOrThrow(state.lumpSums, id, 'lump sum');
+  return update(state, (d) => {
+    d.lumpSums = d.lumpSums.filter((l) => l.id !== id);
+  });
+}
+
+// Monthly budget excluding rent. A per-period override wins.
 // Otherwise it is (lump sum - rent for the cycle) / months. Null if nothing covers the period.
 export function baseBudgetFor(state, periodId) {
   parsePeriod(periodId);
@@ -174,6 +246,30 @@ export function setBaseOverride(state, periodId, amount) {
   });
 }
 
+export function clearBaseOverride(state, periodId) {
+  if (!(periodId in (state.baseOverrides ?? {}))) throw new Error(`No base override for ${periodId}`);
+  return update(state, (d) => {
+    delete d.baseOverrides[periodId];
+  });
+}
+
+export function addInstalment(state, { name, total, months, firstPeriod }) {
+  const n = assertName(name);
+  assertAmount(total, 'total');
+  assertMonths(months);
+  parsePeriod(firstPeriod);
+  return update(state, (d) => {
+    d.instalments.push({ id: nextId(d, 'inst'), name: n, total, months, firstPeriod });
+  });
+}
+
+export function removeInstalment(state, id) {
+  findOrThrow(state.instalments, id, 'instalment');
+  return update(state, (d) => {
+    d.instalments = d.instalments.filter((x) => x.id !== id);
+  });
+}
+
 // Instalments (concert, bus) active in a period. They drop off by themselves when finished.
 export function fixedItemsFor(state, periodId) {
   const i = periodIndex(periodId);
@@ -185,122 +281,261 @@ export function fixedItemsFor(state, periodId) {
 }
 
 // ---------------------------------------------------------------------------
-// Spends
+// Spends (out of the monthly budget)
 // ---------------------------------------------------------------------------
 
 export function addSpend(state, { date, amount, note = '' }) {
   parseDate(date);
   assertAmount(amount);
   return update(state, (d) => {
-    d.spends.push({ id: nextId(d, 's'), date, amount, note });
+    d.spends.push({ id: nextId(d, 's'), date, amount, note: String(note).trim() });
+  });
+}
+
+export function editSpend(state, id, patch) {
+  const cur = findOrThrow(state.spends, id, 'spend');
+  const next = { ...cur, ...patch };
+  parseDate(next.date);
+  assertAmount(next.amount);
+  return update(state, (d) => {
+    const s = d.spends.find((x) => x.id === id);
+    s.date = next.date;
+    s.amount = next.amount;
+    s.note = String(next.note ?? '').trim();
   });
 }
 
 export function removeSpend(state, id) {
-  if (!state.spends.some((s) => s.id === id)) throw new Error(`No spend with id "${id}"`);
+  findOrThrow(state.spends, id, 'spend');
   return update(state, (d) => {
     d.spends = d.spends.filter((s) => s.id !== id);
   });
 }
 
+// Spends with start <= date < end, oldest first.
+export function spendsBetween(state, start, end) {
+  return state.spends.filter((s) => s.date >= start && s.date < end).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export function spendsInPeriod(state, periodId) {
   const { start, end } = periodRange(periodId);
-  return state.spends.filter((s) => s.date >= start && s.date < end).sort((a, b) => a.date.localeCompare(b.date));
+  return spendsBetween(state, start, end);
+}
+
+// One entry per day with start <= date < end, for the charts.
+export function spendByDay(state, start, end) {
+  const totals = {};
+  for (const s of spendsBetween(state, start, end)) totals[s.date] = (totals[s.date] ?? 0) + s.amount;
+  const days = [];
+  for (let d = start; d < end; d = addDays(d, 1)) days.push({ date: d, total: totals[d] ?? 0 });
+  return days;
+}
+
+// ---------------------------------------------------------------------------
+// Transfers between accounts
+// ---------------------------------------------------------------------------
+
+const FROM_TYPES = new Set(['budget', 'pot', 'bucket', 'in']);
+const TO_TYPES = new Set(['budget', 'pot', 'bucket', 'stocks', 'out']);
+
+export const sameAccount = (a, b) => Boolean(a && b) && a.type === b.type
+  && a.periodId === b.periodId && a.potId === b.potId && a.bucketId === b.bucketId;
+
+function cleanRef(ref) {
+  if (ref.type === 'budget') return { type: 'budget', periodId: ref.periodId };
+  if (ref.type === 'pot') return { type: 'pot', potId: ref.potId };
+  if (ref.type === 'bucket') return { type: 'bucket', bucketId: ref.bucketId };
+  return { type: ref.type };
+}
+
+function checkAccount(state, ref, dir) {
+  const ok = dir === 'from' ? FROM_TYPES : TO_TYPES;
+  if (!ref || !ok.has(ref.type)) throw new Error(`Money cannot move ${dir} "${ref?.type}"`);
+  if (ref.type === 'budget') parsePeriod(ref.periodId);
+  if (ref.type === 'pot') findOrThrow(state.pots, ref.potId, 'salary');
+  if (ref.type === 'bucket') {
+    const b = findOrThrow(state.buckets, ref.bucketId, 'category');
+    if (b.closed) throw new Error(`Category "${b.name}" was deleted`);
+  }
+}
+
+export function accountName(state, ref) {
+  switch (ref.type) {
+    case 'budget': return `Budget ${periodLabel(ref.periodId)}`;
+    case 'pot': {
+      const p = state.pots.find((x) => x.id === ref.potId);
+      return `Salary ${p?.label || ref.potId}`;
+    }
+    case 'bucket': return state.buckets.find((x) => x.id === ref.bucketId)?.name ?? 'Deleted category';
+    case 'stocks': return 'Stocks';
+    case 'out': return 'Spent';
+    case 'in': return 'New money';
+    default: return ref.type;
+  }
+}
+
+function flowsFor(state, ref) {
+  let inn = 0;
+  let out = 0;
+  for (const t of state.transfers) {
+    if (sameAccount(t.to, ref)) inn += t.amount;
+    if (sameAccount(t.from, ref)) out += t.amount;
+  }
+  return { in: inn, out };
+}
+
+// Current balance of an account. Null for stocks / out / in, which have no balance.
+export function balanceOf(state, ref) {
+  if (ref.type === 'budget') return periodSummary(state, ref.periodId).remaining;
+  if (ref.type === 'pot') return potLedger(state).pots.find((p) => p.id === ref.potId)?.balance ?? 0;
+  if (ref.type === 'bucket') return bucketLedger(state, { all: true }).buckets.find((b) => b.id === ref.bucketId)?.balance ?? 0;
+  return null;
+}
+
+export function addTransfer(state, { date, from, to, amount, note = '' }) {
+  parseDate(date);
+  assertAmount(amount);
+  checkAccount(state, from, 'from');
+  checkAccount(state, to, 'to');
+  if (sameAccount(from, to)) throw new Error('From and To are the same account');
+  if (from.type === 'in' && (to.type === 'out' || to.type === 'stocks')) {
+    throw new Error('New money has to go into an account first');
+  }
+  if (from.type !== 'in') {
+    const bal = balanceOf(state, from);
+    if (amount > bal + EPS) throw new Error(`${accountName(state, from)} only has ${money(Math.max(0, bal))}`);
+  }
+  return update(state, (d) => {
+    d.transfers.push({
+      id: nextId(d, 't'), date, from: cleanRef(from), to: cleanRef(to), amount, note: String(note).trim(),
+    });
+  });
+}
+
+export function removeTransfer(state, id) {
+  findOrThrow(state.transfers, id, 'transfer');
+  return update(state, (d) => {
+    d.transfers = d.transfers.filter((t) => t.id !== id);
+  });
+}
+
+// Transfers in or out of one account, oldest first (history with no date comes first).
+export function transfersFor(state, ref) {
+  return state.transfers
+    .map((t, i) => ({ t, i }))
+    .filter(({ t }) => sameAccount(t.from, ref) || sameAccount(t.to, ref))
+    .sort((a, b) => (a.t.date ?? '').localeCompare(b.t.date ?? '') || a.i - b.i)
+    .map(({ t }) => ({ ...t, direction: sameAccount(t.to, ref) ? 'in' : 'out' }));
 }
 
 // ---------------------------------------------------------------------------
 // Period summary: the main number K watches
 // ---------------------------------------------------------------------------
-//   available  = base budget minus upfront items (what the month is allowed to spend)
-//   remaining  = available - spent (negative means salary is being used)
-//   ceiling    = available + spendable part of the salary earned in this period
-//   level      = ok | over-base | near-ceiling | over-ceiling
+//   available  = base budget minus upfront items
+//   opening    = available, or the leftover imported from before the app
+//   total      = opening + transfers in - transfers out
+//   remaining  = total - spent (below 0 means over budget)
 
-export function periodSummary(state, periodId) {
+export function periodSummary(state, periodId, today = null) {
   const base = baseBudgetFor(state, periodId);
   const hasBudget = base !== null;
   const fixed = fixedItemsFor(state, periodId);
   const fixedTotal = sum(fixed.map((f) => f.amount));
   const available = hasBudget ? base - fixedTotal : 0;
+  const importedLeftover = state.periodOverrides?.[periodId]?.leftover;
+  const imported = typeof importedLeftover === 'number';
+  const opening = imported ? importedLeftover : available;
+  const flows = flowsFor(state, { type: 'budget', periodId });
+  const total = opening + flows.in - flows.out;
   const spends = spendsInPeriod(state, periodId);
   const spent = sum(spends.map((s) => s.amount));
-  const remaining = available - spent;
-  const overflow = Math.max(0, spent - available);
-  const leftover = Math.max(0, remaining);
+  const remaining = total - spent;
+  const { start, end } = periodRange(periodId);
 
-  const potsHere = state.pots.filter((p) => p.earnedPeriod === periodId);
-  const salaryLogged = potsHere.length > 0;
-  const salaryAllowance = sum(potsHere.map((p) => Math.max(0, p.amount - p.stockMin)));
-  const ceiling = available + salaryAllowance;
-
-  let level;
-  if (spent <= available) level = 'ok';
-  else if (!salaryLogged) level = 'over-base';
-  else if (spent > ceiling) level = 'over-ceiling';
-  else if (spent >= ceiling * state.settings.ceilingWarnPct) level = 'near-ceiling';
-  else level = 'over-base';
-
-  return {
-    periodId, ...periodRange(periodId), hasBudget, base, fixed, fixedTotal, available,
-    spends, spent, remaining, overflow, leftover, salaryLogged, salaryAllowance, ceiling, level,
+  const r = {
+    periodId, start, end, hasBudget, imported, base, fixed, fixedTotal, available, opening,
+    transfersIn: flows.in, transfersOut: flows.out, total, spends, spent, remaining,
+    level: round2(remaining) < 0 ? 'over' : 'ok',
   };
+  if (today) {
+    parseDate(today);
+    const daysTotal = daysBetween(start, end);
+    let daysLeft = 0;
+    if (today < start) daysLeft = daysTotal;
+    else if (today < end) daysLeft = daysBetween(today, end); // today counts as a day left
+    r.daysTotal = daysTotal;
+    r.daysLeft = daysLeft;
+    r.perDayLeft = daysLeft > 0 && remaining > 0 ? remaining / daysLeft : 0;
+    r.dailyPace = total > 0 ? total / daysTotal : 0; // even spread of the month's money, for the chart line
+  }
+  return r;
 }
 
 // ---------------------------------------------------------------------------
-// Salary pots
+// Salary
 // ---------------------------------------------------------------------------
+
+// Pay earned 28/9 to 28/10 (period '2026-09') -> 't9-t10', like K's Notes.
+export function salaryLabel(earnedPeriod) {
+  const { m } = parsePeriod(earnedPeriod);
+  return `t${m}-t${m === 12 ? 1 : m + 1}`;
+}
 
 // Log the pay that actually landed. earnedPeriod defaults to the period just before the one the
 // money arrived in (pay lands around the 30th / 1st for work done up to the 28th).
 export function addSalary(state, { label, amount, receivedOn, earnedPeriod }) {
   parseDate(receivedOn);
   assertAmount(amount);
-  const earned = earnedPeriod ?? shiftPeriod(periodIdOf(receivedOn), -1);
+  const earned = earnedPeriod || shiftPeriod(periodIdOf(receivedOn), -1);
   parsePeriod(earned);
+  const name = String(label ?? '').trim() || salaryLabel(earned);
   return update(state, (d) => {
-    d.pots.push({
-      id: nextId(d, 'pot'), label: label ?? '', amount, receivedOn, earnedPeriod: earned,
-      stockMin: d.settings.stockMin, spends: [],
+    d.pots.push({ id: nextId(d, 'pot'), label: name, amount, receivedOn, earnedPeriod: earned, stockMin: d.settings.stockMin });
+  });
+}
+
+export function editSalary(state, id, patch) {
+  const cur = findOrThrow(state.pots, id, 'salary');
+  const next = { ...cur, ...patch };
+  next.label = assertName(next.label, 'Label');
+  assertAmount(next.amount);
+  if (next.receivedOn !== null) parseDate(next.receivedOn);
+  if (next.earnedPeriod !== null) parsePeriod(next.earnedPeriod);
+  if (!(typeof next.stockMin === 'number' && next.stockMin >= 0)) throw new Error('stock minimum must be 0 or more');
+  return update(state, (d) => {
+    Object.assign(d.pots.find((p) => p.id === id), {
+      label: next.label, amount: next.amount, receivedOn: next.receivedOn, earnedPeriod: next.earnedPeriod, stockMin: next.stockMin,
     });
   });
 }
 
-function totalOverflow(state) {
-  const ids = new Set(state.spends.map((s) => periodIdOf(s.date)));
-  let t = 0;
-  for (const id of ids) t += periodSummary(state, id).overflow;
-  return t;
+export function removeSalary(state, id) {
+  findOrThrow(state.pots, id, 'salary');
+  if (transfersFor(state, { type: 'pot', potId: id }).length) {
+    throw new Error('This salary has transfers. Delete those first.');
+  }
+  return update(state, (d) => {
+    d.pots = d.pots.filter((p) => p.id !== id);
+  });
 }
 
-// Balance of every pot. Overspending beyond the base budget is taken from the oldest pot first,
-// and only from the part above that pot's stock reserve.
+// Balance of every salary month. Each month keeps its stock minimum aside until that much
+// has gone to stocks; the rest is free.
 export function potLedger(state) {
-  const moved = {};
-  for (const dep of state.stockDeposits) {
-    for (const part of dep.parts) {
-      if (part.type === 'pot') moved[part.potId] = (moved[part.potId] ?? 0) + part.amount;
-    }
-  }
-  const fifo = state.pots
+  const pots = state.pots
     .map((p, i) => ({ p, i }))
     .sort((a, b) => (a.p.receivedOn ?? '').localeCompare(b.p.receivedOn ?? '') || a.i - b.i)
-    .map((x) => x.p);
-
-  let toDraw = totalOverflow(state);
-  const pots = fifo.map((p) => {
-    const stockMoved = moved[p.id] ?? 0;
-    const spentOther = sum(p.spends.map((s) => s.amount));
-    const before = p.amount - stockMoved - spentOther;
-    const reserved = Math.min(Math.max(0, p.stockMin - stockMoved), Math.max(0, before));
-    const free = Math.max(0, before - reserved);
-    const drawn = Math.min(free, toDraw);
-    toDraw -= drawn;
-    return {
-      id: p.id, label: p.label, amount: p.amount, receivedOn: p.receivedOn, earnedPeriod: p.earnedPeriod,
-      stockMoved, spentOther, drawn, balance: before - drawn, reserved, free: free - drawn,
-    };
-  });
-
+    .map(({ p }) => {
+      const ref = { type: 'pot', potId: p.id };
+      const flows = flowsFor(state, ref);
+      const toStocks = sum(state.transfers.filter((t) => sameAccount(t.from, ref) && t.to.type === 'stocks').map((t) => t.amount));
+      const balance = p.amount + flows.in - flows.out;
+      const reserved = Math.min(Math.max(0, p.stockMin - toStocks), Math.max(0, balance));
+      return {
+        id: p.id, label: p.label, amount: p.amount, receivedOn: p.receivedOn, earnedPeriod: p.earnedPeriod,
+        stockMin: p.stockMin, transfersIn: flows.in, transfersOut: flows.out, toStocks, balance, reserved, free: balance - reserved,
+      };
+    });
   return {
     pots,
     totals: {
@@ -308,16 +543,78 @@ export function potLedger(state) {
       reserved: sum(pots.map((p) => p.reserved)),
       free: sum(pots.map((p) => p.free)),
     },
-    shortfall: toDraw < 1e-9 ? 0 : toDraw, // overspend that no pot could cover
   };
 }
 
 // ---------------------------------------------------------------------------
-// Stocks: leftover of closed months + salary reserves, deposited together to save on fees
+// Other expenses: categories K names himself (Birthday, Flights, ...)
 // ---------------------------------------------------------------------------
 
-export function leftoverStatus(state, today) {
-  parseDate(today);
+function assertUniqueBucket(state, name, exceptId = null) {
+  const taken = state.buckets.some((b) => !b.closed && b.id !== exceptId && b.name.toLowerCase() === name.toLowerCase());
+  if (taken) throw new Error(`There is already a category called "${name}"`);
+}
+
+export function addBucket(state, { name }) {
+  const n = assertName(name);
+  assertUniqueBucket(state, n);
+  return update(state, (d) => {
+    d.buckets.push({ id: nextId(d, 'b'), name: n });
+  });
+}
+
+export function renameBucket(state, id, name) {
+  findOrThrow(state.buckets, id, 'category');
+  const n = assertName(name);
+  assertUniqueBucket(state, n, id);
+  return update(state, (d) => {
+    d.buckets.find((b) => b.id === id).name = n;
+  });
+}
+
+// A category with history is hidden rather than erased, so old transfers still show its name.
+export function removeBucket(state, id) {
+  findOrThrow(state.buckets, id, 'category');
+  const ref = { type: 'bucket', bucketId: id };
+  const bal = balanceOf(state, ref);
+  if (Math.abs(round2(bal)) > 0) throw new Error(`Move the ${money(bal)} out of this category first`);
+  const used = transfersFor(state, ref).length > 0;
+  return update(state, (d) => {
+    if (used) d.buckets.find((b) => b.id === id).closed = true;
+    else d.buckets = d.buckets.filter((b) => b.id !== id);
+  });
+}
+
+export function bucketLedger(state, { all = false } = {}) {
+  const buckets = state.buckets
+    .filter((b) => all || !b.closed)
+    .map((b) => {
+      const ref = { type: 'bucket', bucketId: b.id };
+      const flows = flowsFor(state, ref);
+      const spent = sum(state.transfers.filter((t) => sameAccount(t.from, ref) && t.to.type === 'out').map((t) => t.amount));
+      return { id: b.id, name: b.name, closed: Boolean(b.closed), transfersIn: flows.in, transfersOut: flows.out, spent, balance: flows.in - flows.out };
+    });
+  return { buckets, totals: { balance: sum(buckets.map((b) => b.balance)) } };
+}
+
+// ---------------------------------------------------------------------------
+// Stocks
+// ---------------------------------------------------------------------------
+
+export function stocksSummary(state) {
+  const deposits = state.transfers.filter((t) => t.to.type === 'stocks');
+  return {
+    sent: sum(deposits.map((t) => t.amount)),
+    stillFromSalary: potLedger(state).totals.reserved, // stock minimums not sent yet
+    deposits,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Finished months: what was left, and whether K has dealt with it
+// ---------------------------------------------------------------------------
+
+function knownPeriods(state) {
   const ids = new Set([
     ...Object.keys(state.periodOverrides),
     ...Object.keys(state.baseOverrides ?? {}),
@@ -326,52 +623,44 @@ export function leftoverStatus(state, today) {
   for (const l of state.lumpSums) {
     for (let k = 0; k < l.months; k++) ids.add(shiftPeriod(l.firstPeriod, k));
   }
+  for (const t of state.transfers) {
+    if (t.from.type === 'budget') ids.add(t.from.periodId);
+    if (t.to.type === 'budget') ids.add(t.to.periodId);
+  }
+  return [...ids].sort();
+}
+
+// Months that have ended, newest first. A month is done when K ticked it, or when nothing is left.
+export function monthsStatus(state, today) {
+  parseDate(today);
   const rows = [];
-  for (const id of [...ids].sort()) {
-    if (periodRange(id).end > today) continue; // period still open
-    const s = periodSummary(state, id);
-    const leftover = state.periodOverrides[id]?.leftover ?? (s.hasBudget ? s.leftover : 0);
-    const deposited = sum(
-      state.stockDeposits.flatMap((d) => d.parts.filter((p) => p.type === 'leftover' && p.periodId === id).map((p) => p.amount)),
-    );
-    rows.push({ periodId: id, leftover, deposited, pending: Math.max(0, leftover - deposited) });
+  for (const id of knownPeriods(state).reverse()) {
+    const p = periodSummary(state, id);
+    if (p.end > today) continue; // still running
+    if (!p.hasBudget && !p.imported && p.spends.length === 0 && p.transfersIn === 0) continue;
+    const ticked = state.monthsDone?.[id] ?? null;
+    const empty = round2(p.remaining) === 0;
+    rows.push({
+      periodId: id, start: p.start, end: p.end, label: periodLabel(id), total: p.total, spent: p.spent,
+      remaining: p.remaining, status: ticked || empty ? 'done' : 'open',
+      doneOn: ticked?.date ?? null, doneNote: ticked?.note ?? '',
+      moves: transfersFor(state, { type: 'budget', periodId: id }),
+    });
   }
   return rows;
 }
 
-export function stockSummary(state, today) {
-  const leftovers = leftoverStatus(state, today);
-  const pendingLeftover = sum(leftovers.map((r) => r.pending));
-  const reservedFromSalary = potLedger(state).totals.reserved;
-  return { leftovers, pendingLeftover, reservedFromSalary, total: pendingLeftover + reservedFromSalary };
+export function markMonthDone(state, periodId, { date, note = '' }) {
+  parsePeriod(periodId);
+  parseDate(date);
+  return update(state, (d) => {
+    d.monthsDone = { ...(d.monthsDone ?? {}), [periodId]: { date, note: String(note).trim() } };
+  });
 }
 
-// parts: [{ type:'pot', potId, amount }, { type:'leftover', periodId, amount }]
-export function recordStockDeposit(state, { date, parts }) {
-  parseDate(date);
-  if (!Array.isArray(parts) || parts.length === 0) throw new Error('A stock deposit needs at least one part');
-  const ledger = potLedger(state);
-  const pending = Object.fromEntries(leftoverStatus(state, date).map((r) => [r.periodId, r.pending]));
-  const usedPot = {};
-  const usedLeft = {};
-  for (const part of parts) {
-    assertAmount(part.amount, 'deposit part amount');
-    if (part.type === 'pot') {
-      const pot = ledger.pots.find((p) => p.id === part.potId);
-      if (!pot) throw new Error(`No pot with id "${part.potId}"`);
-      usedPot[part.potId] = (usedPot[part.potId] ?? 0) + part.amount;
-      if (usedPot[part.potId] > pot.balance + 1e-9) throw new Error(`Pot "${pot.label}" only has ${money(pot.balance)}`);
-    } else if (part.type === 'leftover') {
-      usedLeft[part.periodId] = (usedLeft[part.periodId] ?? 0) + part.amount;
-      if (usedLeft[part.periodId] > (pending[part.periodId] ?? 0) + 1e-9) {
-        throw new Error(`Period ${part.periodId} only has ${money(pending[part.periodId] ?? 0)} pending`);
-      }
-    } else {
-      throw new Error(`Unknown deposit part type "${part.type}"`);
-    }
-  }
+export function unmarkMonthDone(state, periodId) {
   return update(state, (d) => {
-    d.stockDeposits.push({ id: nextId(d, 'dep'), date, parts: structuredClone(parts) });
+    delete d.monthsDone?.[periodId];
   });
 }
 
@@ -387,7 +676,13 @@ export function markRentPaid(state, dueId, paidOn) {
   });
 }
 
-const rentAmount = (state, id) => lumpFor(state, id)?.rentPerMonth ?? state.settings.rentPerMonth ?? null;
+export function unmarkRentPaid(state, dueId) {
+  return update(state, (d) => {
+    delete d.rentPaid[dueId];
+  });
+}
+
+export const rentAmount = (state, id) => lumpFor(state, id)?.rentPerMonth ?? state.settings.rentPerMonth ?? null;
 
 // status: 'overdue' | 'due-today' | 'upcoming' | 'none'
 export function rentReminder(state, today) {
@@ -400,48 +695,15 @@ export function rentReminder(state, today) {
       daysLate, amount: rentAmount(state, pid),
     };
   }
-  const nextId2 = shiftPeriod(pid, 1);
+  const nextPid = shiftPeriod(pid, 1);
   const daysUntil = daysBetween(today, end);
-  if (!state.rentPaid[nextId2] && daysUntil <= state.settings.rentRemindDays) {
+  if (!state.rentPaid[nextPid] && daysUntil <= state.settings.rentRemindDays) {
     return {
-      status: 'upcoming', periodId: nextId2, dueDate: end,
-      daysUntil, amount: rentAmount(state, nextId2),
+      status: 'upcoming', periodId: nextPid, dueDate: end,
+      daysUntil, amount: rentAmount(state, nextPid),
     };
   }
   return { status: 'none' };
-}
-
-// ---------------------------------------------------------------------------
-// Irregular costs (flights etc.): tracked separately, never part of the monthly budget
-// ---------------------------------------------------------------------------
-
-export function addIrregular(state, { name, amount, date = null, status = 'planned' }) {
-  assertAmount(amount);
-  if (date !== null) parseDate(date);
-  if (!['planned', 'paid'].includes(status)) throw new Error('status must be planned or paid');
-  return update(state, (d) => {
-    d.irregular.push({ id: nextId(d, 'irr'), name, amount, date, status });
-  });
-}
-
-export function markIrregularPaid(state, id, date) {
-  parseDate(date);
-  if (!state.irregular.some((x) => x.id === id)) throw new Error(`No irregular cost with id "${id}"`);
-  return update(state, (d) => {
-    const item = d.irregular.find((x) => x.id === id);
-    item.status = 'paid';
-    item.date = date;
-  });
-}
-
-export function irregularSummary(state) {
-  const planned = state.irregular.filter((x) => x.status === 'planned');
-  const paid = state.irregular.filter((x) => x.status === 'paid');
-  return {
-    planned, paid,
-    plannedTotal: sum(planned.map((x) => x.amount)),
-    paidTotal: sum(paid.map((x) => x.amount)),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -452,7 +714,38 @@ export function exportState(state) {
   return JSON.stringify(state, null, 2);
 }
 
-const REQUIRED_KEYS = ['settings', 'lumpSums', 'instalments', 'spends', 'pots', 'stockDeposits', 'periodOverrides', 'rentPaid', 'irregular'];
+const REQUIRED_V1 = ['settings', 'lumpSums', 'instalments', 'spends', 'pots', 'stockDeposits', 'periodOverrides', 'rentPaid', 'irregular'];
+const REQUIRED_V2 = ['settings', 'lumpSums', 'instalments', 'spends', 'pots', 'buckets', 'transfers', 'periodOverrides', 'rentPaid'];
+
+// Version 1 had automatic salary draws, a stock pool and irregular costs. They become plain transfers.
+function migrateV1(old) {
+  const s = emptyState();
+  s.seq = old.seq ?? 0;
+  const { ceilingWarnPct, ...settings } = old.settings ?? {};
+  s.settings = { ...s.settings, ...settings };
+  for (const k of ['lumpSums', 'instalments', 'spends', 'periodOverrides', 'rentPaid']) s[k] = old[k];
+  s.baseOverrides = old.baseOverrides ?? {};
+  const t = (date, from, to, amount, note) => s.transfers.push({ id: nextId(s, 't'), date, from, to, amount, note });
+
+  for (const p of old.pots) {
+    const { spends = [], ...pot } = p;
+    s.pots.push(pot);
+    for (const x of spends) t(null, { type: 'pot', potId: p.id }, { type: 'out' }, x.amount, x.note ?? '');
+  }
+  for (const dep of old.stockDeposits) {
+    for (const part of dep.parts) {
+      const from = part.type === 'pot' ? { type: 'pot', potId: part.potId } : { type: 'budget', periodId: part.periodId };
+      t(dep.date ?? null, from, { type: 'stocks' }, part.amount, '');
+    }
+  }
+  for (const x of old.irregular) {
+    const id = nextId(s, 'b');
+    s.buckets.push({ id, name: x.name });
+    t(x.date ?? null, { type: 'in' }, { type: 'bucket', bucketId: id }, x.amount, '');
+    if (x.status === 'paid') t(x.date ?? null, { type: 'bucket', bucketId: id }, { type: 'out' }, x.amount, '');
+  }
+  return s;
+}
 
 export function importState(json) {
   let s;
@@ -461,13 +754,15 @@ export function importState(json) {
   } catch {
     throw new Error('Backup is not valid JSON');
   }
-  if (!s || typeof s !== 'object' || s.version !== STATE_VERSION) {
+  if (!s || typeof s !== 'object' || (s.version !== 1 && s.version !== STATE_VERSION)) {
     throw new Error(`Unsupported backup version (expected ${STATE_VERSION})`);
   }
-  for (const k of REQUIRED_KEYS) {
+  for (const k of s.version === 1 ? REQUIRED_V1 : REQUIRED_V2) {
     if (!(k in s)) throw new Error(`Backup is missing "${k}"`);
   }
-  s.baseOverrides ??= {}; // added after the first backups were possible
+  if (s.version === 1) return migrateV1(s);
+  s.baseOverrides ??= {};
+  s.monthsDone ??= {};
   s.settings = { ...emptyState().settings, ...s.settings };
   return s;
 }
@@ -477,12 +772,15 @@ export function importState(json) {
 // ---------------------------------------------------------------------------
 
 export function dashboard(state, today) {
+  const months = monthsStatus(state, today);
   return {
     today,
-    period: periodSummary(state, periodIdOf(today)),
-    pots: potLedger(state),
-    stock: stockSummary(state, today),
+    empty: isEmpty(state),
+    period: periodSummary(state, periodIdOf(today), today),
+    salary: potLedger(state),
+    other: bucketLedger(state),
+    stocks: stocksSummary(state),
+    openMonths: months.filter((m) => m.status === 'open'),
     rent: rentReminder(state, today),
-    irregular: irregularSummary(state),
   };
 }
