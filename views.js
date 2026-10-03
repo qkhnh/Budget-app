@@ -274,7 +274,7 @@ export function renderAccounts(state, today) {
   const out = [header('Accounts', '', `<button class="btn small" data-act="transfer">${icon.swap(16)} Transfer</button>`)];
 
   // Four short cards. Each opens its own screen with the details and actions.
-  const card = (page, title, amount, sub, red = false) => `<button class="card tap ${page === 'budget' ? 'hero' : ''}" data-act="open-page" data-page="${page}">
+  const card = (page, title, amount, sub, red = false) => `<button class="card tap hero" data-act="open-page" data-page="${page}">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div class="tiny">${esc(title)}</div><span class="chev muted">${icon.right(18)}</span>
     </div>
