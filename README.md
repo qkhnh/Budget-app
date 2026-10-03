@@ -6,7 +6,7 @@ A personal monthly budget tracker I built to fit my own needs. It runs as an app
 
 ## What it does
 
-- Tracks a monthly budget that runs from the 28th to the next 28th
+- Tracks a monthly budget that runs from the 28th to the next 28th (because I pay my rent on the 28th lol)
 - Quick spend logging with a keypad and reusable notes
 - Separate accounts for budget, salary and other expenses, with transfers between them
 - A set amount from each month's salary kept aside for stocks
