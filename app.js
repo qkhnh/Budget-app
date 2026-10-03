@@ -9,7 +9,7 @@ import { renderSheet, amountHTML } from './sheets.js';
 import { esc, fmt, icon, parseRefKey } from './ui.js';
 
 const KEY = 'budget-state-v1'; // storage key from the first version; the data inside carries its own version
-const APP_VERSION = '0.2.1';
+const APP_VERSION = '0.2.2';
 
 const $view = document.getElementById('view');
 const $tabs = document.getElementById('tabs');
@@ -19,6 +19,7 @@ const $toast = document.getElementById('toast');
 let state = null;
 const ui = {
   tab: 'home',
+  homeAll: false, // Home shows every transaction of the month instead of the latest few
   insights: { mode: 'month', periodId: null, weekOf: null },
   sheets: [], // stack of open sheets, top = last
 };
@@ -88,7 +89,7 @@ const TABS = [
 
 function render() {
   const today = B.todayISO();
-  if (ui.tab === 'home') $view.innerHTML = renderHome(state, today);
+  if (ui.tab === 'home') $view.innerHTML = renderHome(state, today, ui);
   else if (ui.tab === 'insights') $view.innerHTML = renderInsights(state, today, ui);
   else if (ui.tab === 'accounts') $view.innerHTML = renderAccounts(state, today);
   else $view.innerHTML = renderSettings(state, today, installStatus());
@@ -253,6 +254,10 @@ document.addEventListener('click', (e) => {
       break;
     case 'add':
       openSheet(newEntry('spend'));
+      break;
+    case 'toggle-recent':
+      ui.homeAll = !ui.homeAll;
+      render();
       break;
     case 'close-sheet':
       closeSheet();
