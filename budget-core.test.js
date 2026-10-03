@@ -125,6 +125,18 @@ test('editing and removing a spend', () => {
   assert.throws(() => B.removeSpend(s, id), /No spend/);
 });
 
+test('previous notes: newest first, each once, blank notes skipped', () => {
+  let s = sample();
+  s = B.addSpend(s, { date: '2030-02-01', amount: 20, note: 'Groceries' });
+  s = B.addSpend(s, { date: '2030-02-02', amount: 15, note: 'Lunch' });
+  s = B.addSpend(s, { date: '2030-02-03', amount: 30, note: 'groceries ' }); // same note, different case
+  s = B.addSpend(s, { date: '2030-02-04', amount: 5 });
+  s = B.addTransfer(s, { date: '2030-02-05', from: potRef(s), to: budget('2030-01'), amount: 10, note: 'Top up' });
+  assert.deepEqual(B.recentNotes(s), ['Top up', 'groceries', 'Lunch']);
+  assert.deepEqual(B.recentNotes(s, 2), ['Top up', 'groceries']);
+  assert.deepEqual(B.recentNotes(B.emptyState()), []);
+});
+
 test('spend totals per day for the chart', () => {
   let s = sample();
   s = B.addSpend(s, { date: '2030-02-04', amount: 10 });

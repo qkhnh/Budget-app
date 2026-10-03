@@ -339,10 +339,18 @@ function periodOptions(today, selected, back = 12, ahead = 12) {
 
 const delBtn = (act, attrs) => `<button class="bubble" style="color:var(--red)" data-act="${act}" ${attrs} aria-label="Delete">${icon.trash(16)}</button>`;
 
-export function renderSettings(state, today, statusLine) {
+export function renderSettings(state, today, statusLine, ui) {
   const s = state.settings;
   const cur = B.periodIdOf(today);
   const out = [header('Settings')];
+
+  out.push(`<div class="card form">
+    <div class="tiny">Appearance</div>
+    <div class="seg seg-wide" role="radiogroup" aria-label="Theme">
+      ${[['system', 'System'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<button class="${ui.theme === v ? 'on' : ''}" role="radio" aria-checked="${ui.theme === v}" data-act="theme" data-theme="${v}">${l}</button>`).join('')}
+    </div>
+    <div class="sub">System follows your iPhone's light or dark mode.</div>
+  </div>`);
 
   out.push(`<div class="card form">
     <div class="tiny">Stocks</div>

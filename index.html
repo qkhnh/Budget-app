@@ -12,6 +12,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <script>
+    // Apply the saved Light / Dark choice before the page draws, so it never flashes the other theme.
+    try {
+      const t = localStorage.getItem('budget-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch { /* storage blocked: follow the phone setting */ }
+  </script>
   <link rel="stylesheet" href="styles.css">
   <title>Budget</title>
 </head>

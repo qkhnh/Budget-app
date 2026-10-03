@@ -9,7 +9,8 @@ import { renderSheet, amountHTML } from './sheets.js';
 import { esc, fmt, icon, parseRefKey } from './ui.js';
 
 const KEY = 'budget-state-v1'; // storage key from the first version; the data inside carries its own version
-const APP_VERSION = '0.2.3';
+const THEME_KEY = 'budget-theme'; // 'system' | 'light' | 'dark', a per-phone display choice (not budget data)
+const APP_VERSION = '0.2.4';
 
 const $view = document.getElementById('view');
 const $tabs = document.getElementById('tabs');
@@ -19,12 +20,29 @@ const $toast = document.getElementById('toast');
 let state = null;
 const ui = {
   tab: 'home',
+  theme: loadTheme(),
   homeAll: false, // Home shows every transaction of the month instead of the latest few
   insights: { mode: 'month', periodId: null, weekOf: null },
   sheets: [], // stack of open sheets, top = last
 };
 
 // ---- Storage --------------------------------------------------------------------
+
+function loadTheme() {
+  try { return localStorage.getItem(THEME_KEY) || 'system'; } catch { return 'system'; }
+}
+
+// System follows the phone; Light and Dark override it (also for the status bar colour).
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
+  else delete root.dataset.theme;
+  const forced = { light: '#efeeea', dark: '#0f1a2b' }[theme];
+  for (const m of document.querySelectorAll('meta[name="theme-color"]')) {
+    m.dataset.original ??= m.content;
+    m.content = forced ?? m.dataset.original;
+  }
+}
 
 function load() {
   try { return localStorage.getItem(KEY); } catch { return null; }
@@ -52,6 +70,7 @@ function num(v) {
 }
 
 async function init() {
+  applyTheme(ui.theme);
   const raw = load();
   if (raw) {
     try { state = B.importState(raw); } catch { state = null; }
@@ -92,7 +111,7 @@ function render() {
   if (ui.tab === 'home') $view.innerHTML = renderHome(state, today, ui);
   else if (ui.tab === 'insights') $view.innerHTML = renderInsights(state, today, ui);
   else if (ui.tab === 'accounts') $view.innerHTML = renderAccounts(state, today);
-  else $view.innerHTML = renderSettings(state, today, installStatus());
+  else $view.innerHTML = renderSettings(state, today, installStatus(), ui);
 
   $tabs.innerHTML = `<div class="inner">${TABS.map((t) => (t
     ? `<button class="${ui.tab === t[0] ? 'on' : ''}" data-act="tab" data-tab="${t[0]}" aria-label="${t[1]}">${t[2](22)}<span>${t[1]}</span></button>`
@@ -114,7 +133,7 @@ function renderSheets() {
     document.body.classList.remove('locked');
     return;
   }
-  const full = top.type === 'entry';
+  const full = top.type === 'entry' || top.type === 'note';
   $sheets.innerHTML = `${full ? '' : '<div class="backdrop" data-act="close-sheet"></div>'}
     <div class="sheet ${full ? 'full' : ''} ${top.fresh ? 'enter' : ''}" role="dialog" aria-modal="true">${full ? '' : '<div class="grabber"></div>'}${html}</div>`;
   top.fresh = false;
@@ -124,6 +143,13 @@ function renderSheets() {
 function openSheet(sh) {
   ui.sheets.push({ ...sh, fresh: true });
   renderSheets();
+}
+
+// The Note screen sits on top of the keypad screen and hands the chosen note back to it.
+function finishNote(note) {
+  const entry = ui.sheets.at(-2);
+  if (entry?.type === 'entry') entry.note = String(note ?? '').trim();
+  closeSheet();
 }
 function closeSheet() {
   ui.sheets.pop();
@@ -255,6 +281,12 @@ document.addEventListener('click', (e) => {
     case 'add':
       openSheet(newEntry('spend'));
       break;
+    case 'theme':
+      ui.theme = ds.theme;
+      try { localStorage.setItem(THEME_KEY, ui.theme); } catch { /* still applies until the app is closed */ }
+      applyTheme(ui.theme);
+      render();
+      break;
     case 'toggle-recent':
       ui.homeAll = !ui.homeAll;
       render();
@@ -270,6 +302,16 @@ document.addEventListener('click', (e) => {
     }
     case 'key':
       pressKey(ds.key);
+      break;
+    case 'open-note':
+      openSheet({ type: 'note', note: top.note });
+      document.getElementById('note-input')?.focus();
+      break;
+    case 'pick-note':
+      finishNote(ds.note);
+      break;
+    case 'note-done':
+      finishNote(document.getElementById('note-input')?.value);
       break;
     case 'save-entry':
       saveEntry();
@@ -490,6 +532,10 @@ document.addEventListener('keydown', (e) => {
   const sh = topSheet();
   if (!sh) return;
   if (e.key === 'Escape') { closeSheet(); return; }
+  if (sh.type === 'note') {
+    if (e.key === 'Enter') { e.preventDefault(); finishNote(e.target.value); }
+    return;
+  }
   if (sh.type !== 'entry') return;
   if (e.target.matches?.('input, select')) {
     if (e.key === 'Enter' && e.target.classList.contains('chip-input')) e.target.blur();
