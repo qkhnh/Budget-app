@@ -82,7 +82,6 @@ svg { display: block; }
 .section-title .sub { font-variant-numeric: tabular-nums; }
 .card { background: var(--card); border-radius: var(--radius); padding: 16px; }
 .card.tap { display: block; width: 100%; text-align: left; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .center { text-align: center; }
 .muted { color: var(--muted); }
@@ -158,8 +157,6 @@ svg { display: block; }
 .gauge-ends { display: flex; justify-content: space-between; max-width: 300px; margin: 2px auto 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .stat { background: var(--card); border-radius: 16px; padding: 12px; }
 .stat b { display: block; font-size: 19px; font-weight: 600; margin-top: 4px; white-space: nowrap; }
-.tile { background: var(--card); border-radius: var(--radius); padding: 14px; text-align: left; display: grid; gap: 6px; }
-.tile .big { font-size: 24px; }
 
 /* ---- Insights ------------------------------------------------------------ */
 

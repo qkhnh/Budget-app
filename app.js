@@ -9,7 +9,7 @@ import { renderSheet, amountHTML } from './sheets.js';
 import { esc, fmt, icon, parseRefKey } from './ui.js';
 
 const KEY = 'budget-state-v1'; // storage key from the first version; the data inside carries its own version
-const APP_VERSION = '0.2.0';
+const APP_VERSION = '0.2.1';
 
 const $view = document.getElementById('view');
 const $tabs = document.getElementById('tabs');
@@ -411,11 +411,6 @@ document.addEventListener('submit', (e) => {
       if (apply((s) => B.addLumpSum(s, {
         firstPeriod: get('firstPeriod'), months: Number(get('months')), amount: num(get('amount')), rentPerMonth: num(get('rentPerMonth')),
       }))) done('Lump sum added');
-      break;
-    case 'inst':
-      if (apply((s) => B.addInstalment(s, {
-        name: get('name'), total: num(get('total')), months: Number(get('months')), firstPeriod: get('firstPeriod'),
-      }))) done('Instalment added');
       break;
     case 'override':
       if (apply((s) => B.setBaseOverride(s, get('periodId'), num(get('amount'))))) done('Month budget saved');

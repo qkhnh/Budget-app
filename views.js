@@ -156,17 +156,6 @@ export function renderHome(state, today) {
     })).join('')}</div></div>`);
   }
 
-  out.push(`<div class="grid2">
-    <button class="tile" data-act="goto" data-tab="accounts">
-      <span class="tiny">Salary</span>${big(d.salary.totals.balance)}
-      <span class="sub">${fmt(d.salary.totals.reserved)} for stocks</span>
-    </button>
-    <button class="tile" data-act="goto" data-tab="accounts">
-      <span class="tiny">Other expenses</span>${big(d.other.totals.balance)}
-      <span class="sub">${d.other.buckets.length} categor${d.other.buckets.length === 1 ? 'y' : 'ies'}</span>
-    </button>
-  </div>`);
-
   const items = budgetItems(state, p.periodId);
   out.push(`<div class="section-title"><h2>Recent</h2>${items.length > 12 ? '<button class="sub" data-act="goto" data-tab="insights">See all</button>' : ''}</div>`);
   out.push(`<div>${dayGroups(items, today, 12)}</div>`);
@@ -431,19 +420,8 @@ export function renderSettings(state, today, statusLine) {
       </form>
     </details>
 
-    <div style="margin-top:8px"><b>Instalments</b><div class="sub">Big costs split over months, taken off the top (like a concert ticket or a bus pass).</div></div>
-    <div class="list">${insts || '<div class="empty">None yet.</div>'}</div>
-    <details class="add"><summary class="btn soft small">${icon.plus(14)} Add an instalment</summary>
-      <form class="form" data-form="inst">
-        <label class="field"><span>Name</span><input class="input" name="name" placeholder="e.g. Bus pass"></label>
-        <div class="inline">
-          <label class="field"><span>Total</span><input class="input" name="total" inputmode="decimal" placeholder="0.00"></label>
-          <label class="field"><span>Months</span><input class="input" name="months" inputmode="numeric" value="3"></label>
-        </div>
-        <label class="field"><span>First month</span><select class="input" name="firstPeriod">${periodOptions(today, cur)}</select></label>
-        <button class="btn">Add instalment</button>
-      </form>
-    </details>
+    ${insts ? `<div style="margin-top:8px"><b>Taken off the top</b><div class="sub">These come out of the budget before you spend. Delete them if you log these costs yourself.</div></div>
+    <div class="list">${insts}</div>` : ''}
 
     <div style="margin-top:8px"><b>Set one month's budget</b><div class="sub">Use a fixed amount for one month instead of the lump sum split.</div></div>
     <div class="list">${overrides || '<div class="empty">None.</div>'}</div>
