@@ -22,11 +22,5 @@ There is no server, database or account. The app is plain static files. Everythi
 2. Share > Add to Home Screen
 3. Open it from the Home Screen (it has its own storage, separate from Safari)
 
-## Run locally
-
-```
-npx http-server -a 127.0.0.1 -p 8000 -c-1
-node --test
-```
 
 No build step. `budget-core.js` holds all the money logic as pure functions; the other files only draw the screens.
