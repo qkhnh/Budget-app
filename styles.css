@@ -1,26 +1,32 @@
 /* styles.css
-   Minimal, like Dime, in a navy palette: Midnight Blue #1C2E4A, Dusty Blue #52677D,
-   Ivory #BDC4D4, Deep Navy #0F1A2B, Buttercream #D1CFC9. Flat: no shadows or glows.
+   Calm and soft, after a travel app reference: warm off-white background, white-ish boxes,
+   one muted blue "hero" card, and black for the main actions (+, buttons, gauge fill).
+   Flat: no shadows or glows. Rounded pill shapes.
    Colour only carries meaning: green = money in, red = money out / over, orange = needs attention. */
 
 :root {
-  --bg: #efeeea;       /* light buttercream */
-  --card: #fff7e6;     /* pearl boxes */
-  --card-2: #bdc4d4;   /* ivory */
-  --text: #0f1a2b;     /* deep navy */
-  --muted: #52677d;    /* dusty blue */
-  --faint: #a9b1c2;
-  --line: #d6d3cc;
-  --ink: #1c2e4a;      /* main buttons: midnight blue */
-  --on-ink: #f5f4f1;
+  --bg: #eeece7;       /* warm off-white, not pure white */
+  --card: #f9f8f5;
+  --card-2: #e6e3dd;
+  --text: #1a2230;     /* near-black navy */
+  --muted: #687284;
+  --faint: #bcc2cb;
+  --line: #e3e0da;
+  --ink: #141414;      /* black: main buttons, the + button, gauge fill */
+  --on-ink: #ffffff;
+  --hero: #b3c3d4;     /* muted light blue for the main card */
+  --hero-text: #16202e;
+  --hero-muted: rgba(22, 32, 46, .66);
+  --hero-track: rgba(255, 255, 255, .5);
+  --hero-ink: #141414;
   --green: #2f7350;
-  --green-bg: rgba(47, 115, 80, .13);
+  --green-bg: rgba(47, 115, 80, .12);
   --red: #b0393a;
-  --red-bg: rgba(176, 57, 58, .11);
+  --red-bg: rgba(176, 57, 58, .1);
   --orange: #9a5f12;
-  --orange-bg: rgba(200, 130, 30, .16);
-  --backdrop: rgba(15, 26, 43, .4);
-  --radius: 20px;
+  --orange-bg: rgba(200, 130, 30, .15);
+  --backdrop: rgba(20, 20, 20, .4);
+  --radius: 26px;
   --round: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   color-scheme: light dark;
@@ -31,15 +37,20 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #0f1a2b;     /* deep navy */
-    --card: #fff7e6;   /* pearl boxes */
-    --card-2: #2b405f;
-    --text: #e8e6e1;   /* light buttercream */
-    --muted: #97a4b8;
-    --faint: #52677d;  /* dusty blue */
-    --line: #26395a;
-    --ink: #fff7e6;    /* main buttons: pearl */
-    --on-ink: #0f1a2b;
+    --bg: #131518;
+    --card: #1f2227;
+    --card-2: #2c3037;
+    --text: #edebe6;
+    --muted: #9aa2ae;
+    --faint: #3d424a;
+    --line: #2a2e34;
+    --ink: #edebe6;
+    --on-ink: #141414;
+    --hero: #3a4b5f;
+    --hero-text: #eef2f6;
+    --hero-muted: rgba(238, 242, 246, .7);
+    --hero-track: rgba(255, 255, 255, .16);
+    --hero-ink: #eef2f6;
     --green: #86c9a0;
     --green-bg: rgba(134, 201, 160, .14);
     --red: #f08c84;
@@ -51,15 +62,20 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0f1a2b;
-  --card: #fff7e6;
-  --card-2: #2b405f;
-  --text: #e8e6e1;
-  --muted: #97a4b8;
-  --faint: #52677d;
-  --line: #26395a;
-  --ink: #fff7e6;
-  --on-ink: #0f1a2b;
+  --bg: #131518;
+  --card: #1f2227;
+  --card-2: #2c3037;
+  --text: #edebe6;
+  --muted: #9aa2ae;
+  --faint: #3d424a;
+  --line: #2a2e34;
+  --ink: #edebe6;
+  --on-ink: #141414;
+  --hero: #3a4b5f;
+  --hero-text: #eef2f6;
+  --hero-muted: rgba(238, 242, 246, .7);
+  --hero-track: rgba(255, 255, 255, .16);
+  --hero-ink: #eef2f6;
   --green: #86c9a0;
   --green-bg: rgba(134, 201, 160, .14);
   --red: #f08c84;
@@ -100,7 +116,7 @@ svg { display: block; }
   gap: 14px;
 }
 .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 6px 0 2px; }
-.top h1 { font-size: 32px; font-weight: 700; letter-spacing: -.02em; margin: 0; line-height: 1.1; }
+.top h1 { font-size: 34px; font-weight: 600; letter-spacing: -.03em; margin: 0; line-height: 1.1; }
 .top .sub { margin-top: 2px; }
 .sub { color: var(--muted); font-size: 14px; }
 .tiny { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
@@ -109,23 +125,10 @@ svg { display: block; }
 .section-title .sub { font-variant-numeric: tabular-nums; }
 .card { background: var(--card); border-radius: var(--radius); padding: 16px; }
 
-/* Pearl boxes: everything that sits on --card gets Midnight text, greige details and navy buttons. */
-.card, .stat, .tx, .chip, .chip-input, .fromto, .keypad button, .note-grid button, .seg,
-.navbar .icon-btn, .sheet-head .icon-btn, .amount-line .icon-btn {
-  --text: #102e4a;      /* midnight */
-  --muted: #5b6b7e;
-  --faint: #c3b8a7;
-  --line: #ebe1d1;
-  --card-2: #e9dfcf;    /* greige, for tracks, bubbles and the active tab of a switch */
-  --bg: #fffcf5;        /* text boxes inside a box */
-  --ink: #102e4a;
-  --on-ink: #fff7e6;
-  --green: #2f7350;
-  --green-bg: rgba(47, 115, 80, .13);
-  --red: #b0393a;
-  --red-bg: rgba(176, 57, 58, .11);
-  --orange: #9a5f12;
-  --orange-bg: rgba(200, 130, 30, .16);
+/* The main card: muted blue with dark text in light mode, deeper blue in dark mode. */
+.hero {
+  background: var(--hero);
+  --text: var(--hero-text); --muted: var(--hero-muted); --card-2: var(--hero-track); --ink: var(--hero-ink);
   color: var(--text);
 }
 .card.tap { display: block; width: 100%; text-align: left; }
@@ -145,12 +148,12 @@ svg { display: block; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 44px; padding: 0 18px; border-radius: 14px;
+  min-height: 46px; padding: 0 20px; border-radius: 999px;
   background: var(--ink); color: var(--on-ink); font-weight: 600;
 }
 .btn.soft { background: var(--card-2); color: var(--text); }
 .btn.danger { background: var(--red-bg); color: var(--red); }
-.btn.small { min-height: 34px; padding: 0 12px; border-radius: 10px; font-size: 14px; }
+.btn.small { min-height: 36px; padding: 0 14px; border-radius: 999px; font-size: 14px; }
 .btn.wide { width: 100%; }
 .btn:disabled { opacity: .4; }
 .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -162,9 +165,9 @@ svg { display: block; }
 .pill.ok { background: var(--green-bg); color: var(--green); }
 .pill.warn { background: var(--orange-bg); color: var(--orange); }
 .pill.bad { background: var(--red-bg); color: var(--red); }
-.seg { display: inline-flex; background: var(--card); border-radius: 12px; padding: 3px; }
-.seg button { padding: 6px 14px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--muted); }
-.seg button.on { background: var(--card-2); color: var(--text); }
+.seg { display: inline-flex; background: var(--card); border-radius: 999px; padding: 4px; }
+.seg button { padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.seg button.on { background: var(--ink); color: var(--on-ink); }
 .seg-wide { display: flex; }
 .seg-wide button { flex: 1; padding: 9px 14px; }
 
@@ -195,7 +198,7 @@ svg { display: block; }
 .banner.bad { background: var(--red-bg); }
 .banner .grow { flex: 1; }
 .banner b { display: block; }
-.gauge-card { padding: 18px 16px 16px; text-align: center; }
+.gauge-card { padding: 20px 16px 18px; text-align: center; }
 .gauge { position: relative; max-width: 300px; margin: 0 auto; }
 .gauge svg { width: 100%; height: auto; overflow: visible; }
 .gauge .label { position: absolute; left: 0; right: 0; bottom: 4px; }
@@ -203,12 +206,12 @@ svg { display: block; }
 .gauge-ends { display: flex; justify-content: space-between; max-width: 300px; margin: 2px auto 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tx-list { display: grid; gap: 8px; }
-.tx { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: var(--card); border-radius: 16px; padding: 13px 16px; }
+.tx { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: var(--card); border-radius: 22px; padding: 15px 18px; }
 .tx .grow { flex: 1; min-width: 0; }
 .tx .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tx .sub { font-size: 13px; }
 .tx .amt { font-family: var(--round); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.stat { background: var(--card); border-radius: 16px; padding: 12px; }
+.stat { background: var(--card); border-radius: 22px; padding: 14px 16px; }
 .stat b { display: block; font-size: 19px; font-weight: 600; margin-top: 4px; white-space: nowrap; }
 
 /* ---- Insights ------------------------------------------------------------ */
@@ -255,7 +258,7 @@ details.add[open] > summary { margin-bottom: 10px; }
 #tabs .inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; }
 #tabs button { display: grid; justify-items: center; gap: 2px; padding: 4px 0; color: var(--muted); font-size: 10px; font-weight: 600; }
 #tabs button.on { color: var(--text); }
-#tabs .plus { width: 60px; height: 40px; border-radius: 14px; background: var(--ink); color: var(--on-ink); display: grid; place-items: center; margin: 0 auto; }
+#tabs .plus { width: 50px; height: 50px; border-radius: 50%; background: var(--ink); color: var(--on-ink); display: grid; place-items: center; margin: 0 auto; }
 
 /* ---- Sheets -------------------------------------------------------------- */
 
@@ -289,11 +292,11 @@ details.add[open] > summary { margin-bottom: 10px; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .chip {
   position: relative; display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px;
-  border-radius: 12px; background: var(--card); font-size: 15px; font-weight: 500; white-space: nowrap; max-width: 100%;
+  border-radius: 999px; background: var(--card); font-size: 15px; font-weight: 500; white-space: nowrap; max-width: 100%;
 }
 .chip > svg { color: var(--muted); flex: none; }
 .chip input[type="date"], .chip select { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; font-size: 16px; }
-.chip-input { align-self: center; height: 38px; padding: 0 12px; border-radius: 12px; border: 0; background: var(--card); text-align: center; width: min(260px, 100%); }
+.chip-input { align-self: center; height: 38px; padding: 0 14px; border-radius: 999px; border: 0; background: var(--card); text-align: center; width: min(260px, 100%); }
 .chip-input::placeholder { color: var(--muted); }
 .note-btn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .note-btn.empty-note { color: var(--muted); font-weight: 400; }
@@ -315,7 +318,7 @@ details.add[open] > summary { margin-bottom: 10px; }
 .fromto select { position: absolute; inset: 0; opacity: 0; width: 100%; font-size: 16px; }
 .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-bottom: 6px; }
 .keypad button {
-  height: 58px; border-radius: 14px; background: var(--card); font-family: var(--round);
+  height: 58px; border-radius: 20px; background: var(--card); font-family: var(--round);
   font-size: 26px; font-weight: 500; display: grid; place-items: center; touch-action: manipulation;
 }
 .keypad button:active { background: var(--card-2); }

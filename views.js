@@ -54,7 +54,7 @@ function gauge(p) {
     ? `<path d="M 20 100 A 80 80 0 0 1 ${pt(frac)}" stroke="${over ? 'var(--red)' : 'var(--ink)'}" stroke-width="18" stroke-linecap="round" fill="none"/>`
     : '';
   const pct = p.total > 0 ? Math.round((p.spent / p.total) * 100) : 0;
-  return `<div class="card gauge-card">
+  return `<div class="card gauge-card hero">
     <div class="tiny">Spent ${pct}%</div>
     <div class="gauge">
       <svg viewBox="0 0 200 112" role="img" aria-label="${pct}% of this month's money spent">
@@ -203,7 +203,7 @@ function breakdown(p) {
     ...p.fixed.map((f, i) => ({ name: f.name, value: f.amount, color: i % 2 ? 'var(--faint)' : 'var(--muted)' })),
     { name: 'Spent', value: p.spent, color: p.level === 'over' ? 'var(--red)' : 'var(--ink)' },
     { name: 'Moved out', value: p.transfersOut, color: 'var(--orange)' },
-    { name: 'Left', value: Math.max(0, p.remaining), color: 'var(--green)' },
+    { name: 'Left', value: Math.max(0, p.remaining), color: 'var(--hero)' },
   ].filter((x) => x.value > 0.004);
   const total = sum(parts.map((x) => x.value)) || 1;
   return `<div class="breakdown">${parts.map((x) => `<span style="flex:${x.value};background:${x.color}"></span>`).join('')}</div>
@@ -274,7 +274,7 @@ export function renderAccounts(state, today) {
   const out = [header('Accounts', '', `<button class="btn small" data-act="transfer">${icon.swap(16)} Transfer</button>`)];
 
   // Four short cards. Each opens its own screen with the details and actions.
-  const card = (page, title, amount, sub, red = false) => `<button class="card tap" data-act="open-page" data-page="${page}">
+  const card = (page, title, amount, sub, red = false) => `<button class="card tap ${page === 'budget' ? 'hero' : ''}" data-act="open-page" data-page="${page}">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div class="tiny">${esc(title)}</div><span class="chev muted">${icon.right(18)}</span>
     </div>

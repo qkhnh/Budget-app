@@ -10,7 +10,7 @@ import { esc, fmt, icon, parseRefKey } from './ui.js';
 
 const KEY = 'budget-state-v1'; // storage key from the first version; the data inside carries its own version
 const THEME_KEY = 'budget-theme'; // 'system' | 'light' | 'dark', a per-phone display choice (not budget data)
-const APP_VERSION = '0.2.7';
+const APP_VERSION = '0.2.8';
 
 const $view = document.getElementById('view');
 const $tabs = document.getElementById('tabs');
@@ -37,7 +37,7 @@ function applyTheme(theme) {
   const root = document.documentElement;
   if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
   else delete root.dataset.theme;
-  const forced = { light: '#efeeea', dark: '#0f1a2b' }[theme];
+  const forced = { light: '#eeece7', dark: '#131518' }[theme];
   for (const m of document.querySelectorAll('meta[name="theme-color"]')) {
     m.dataset.original ??= m.content;
     m.content = forced ?? m.dataset.original;
