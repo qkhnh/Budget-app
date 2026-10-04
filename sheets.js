@@ -81,7 +81,7 @@ function entrySheet(sh, state, today) {
     const cur = B.periodIdOf(today);
     const earnedOpts = [-4, -3, -2, -1, 0].map((k) => B.shiftPeriod(cur, k))
       .map((id) => `<option value="${id}" ${id === sh.earned ? 'selected' : ''}>Earned ${esc(B.periodLabel(id))}</option>`).join('');
-    chips = `<input class="chip-input" data-field="label" placeholder="${esc(auto)}" value="${esc(sh.label)}" maxlength="30" aria-label="Label">
+    chips = `<button class="chip-input note-btn" data-act="open-name">Name: ${esc(sh.label || auto)}</button>
       <div class="chips">${dateChipHTML('date', 'Received ')}
         <label class="chip">${icon.tag()}<span>Earned ${esc(B.periodLabel(sh.earned))}</span><select data-field="earned">${earnedOpts}</select></label>
       </div>`;
@@ -352,13 +352,16 @@ function bucketFormSheet(sh, state) {
 
 // Tapping the note on the keypad screen opens this: notes used before (tap one to use it)
 // and a box to type a new one, like CommBank's description picker.
+// The same screen names a salary (field 'label'), suggesting the name from the month it was earned.
 function noteSheet(sh, state) {
-  const notes = B.recentNotes(state, 9);
+  const naming = sh.field === 'label';
+  const choices = naming ? [sh.suggest] : B.recentNotes(state, 9);
   return `<div class="inner">
-    ${head('Note', '<button class="text-btn" data-act="note-done">Done</button>')}
-    ${notes.length ? `<div class="tiny">Used before</div>
-    <div class="note-grid">${notes.map((n) => `<button data-act="pick-note" data-note="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
-    <input class="input" id="note-input" value="${esc(sh.note)}" placeholder="Type a note" maxlength="60" enterkeyhint="done" autocomplete="off">
+    ${head(naming ? 'Salary name' : 'Note', '<button class="text-btn" data-act="note-done">Done</button>')}
+    ${choices.length ? `<div class="tiny">${naming ? 'Suggested' : 'Used before'}</div>
+    <div class="note-grid">${choices.map((n) => `<button data-act="pick-note" data-note="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
+    <input class="input" id="note-input" value="${esc(sh.note)}" placeholder="${naming ? esc(sh.suggest) : 'Type a note'}" maxlength="${naming ? 30 : 60}" enterkeyhint="done" autocomplete="off">
+    ${naming ? '<div class="sub">The name shown for this salary, like in your Notes. Leave it empty to use the suggested one.</div>' : ''}
   </div>`;
 }
 

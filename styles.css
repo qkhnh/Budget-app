@@ -29,6 +29,7 @@
   --radius: 26px;
   --round: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --ease-ios: cubic-bezier(.32, .72, 0, 1);
   color-scheme: light dark;
 }
 
@@ -98,6 +99,7 @@ body {
   font: 16px/1.35 var(--sans);
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
+  overflow-x: hidden; /* the screen underneath a page slides left; never show a sideways scroll */
 }
 body.locked { overflow: hidden; }
 button, input, select { font: inherit; color: inherit; }
@@ -114,7 +116,10 @@ svg { display: block; }
   padding: calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 100px);
   display: grid;
   gap: 14px;
+  transition: transform .4s var(--ease-ios), opacity .4s var(--ease-ios);
 }
+#view.behind { transform: translateX(-28%); opacity: .5; }
+#view.view-enter { animation: view-in .24s ease-out; }
 .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 6px 0 2px; }
 .top h1 { font-size: 34px; font-weight: 600; letter-spacing: -.03em; margin: 0; line-height: 1.1; }
 .top .sub { margin-top: 2px; }
@@ -262,7 +267,9 @@ details.add[open] > summary { margin-bottom: 10px; }
 
 /* ---- Sheets -------------------------------------------------------------- */
 
-.backdrop { position: fixed; inset: 0; z-index: 30; background: var(--backdrop); animation: fade .2s ease; }
+.backdrop { position: fixed; inset: 0; z-index: 30; background: var(--backdrop); }
+.backdrop.enter { animation: fade .35s ease; }
+.backdrop.leaving { animation: fade-out .28s ease forwards; }
 .sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 31;
   max-height: 92dvh; overflow-y: auto; overscroll-behavior: contain;
@@ -270,7 +277,7 @@ details.add[open] > summary { margin-bottom: 10px; }
   padding: 10px 16px calc(env(safe-area-inset-bottom) + 18px);
 }
 .sheet .inner { max-width: 560px; margin: 0 auto; display: grid; gap: 14px; }
-.sheet.enter { animation: rise .26s cubic-bezier(.2, .8, .2, 1); }
+.sheet.enter { animation: rise .45s var(--ease-ios); }
 .sheet.full { top: 0; max-height: none; border-radius: 0; padding-top: calc(env(safe-area-inset-top) + 8px); display: flex; }
 .sheet.full .inner { display: flex; flex-direction: column; width: 100%; gap: 10px; }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; }
@@ -341,9 +348,18 @@ details.add[open] > summary { margin-bottom: 10px; }
 #toast span { flex: 1; }
 #toast button { font-weight: 700; text-decoration: underline; }
 
-.sheet.page.enter { animation: slide-in .26s cubic-bezier(.2, .8, .2, 1); }
+.sheet.page.enter { animation: slide-in .4s var(--ease-ios); }
+.sheet.fade-in { animation: fade .22s ease; }
+.sheet.leaving { animation: sink .3s cubic-bezier(.4, 0, 1, 1) forwards; }
+.sheet.page.leaving { animation: slide-out .3s cubic-bezier(.4, 0, 1, 1) forwards; }
+.sheet.note.leaving { animation: fade-out .18s ease forwards; }
+.sheet.leaving, .backdrop.leaving { pointer-events: none; } /* taps go to the screen underneath */
 @keyframes rise { from { transform: translateY(100%); } }
 @keyframes slide-in { from { transform: translateX(100%); } }
 @keyframes fade { from { opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes sink { to { transform: translateY(100%); } }
+@keyframes slide-out { to { transform: translateX(100%); } }
+@keyframes view-in { from { opacity: 0; transform: translateY(8px); } }
 @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
