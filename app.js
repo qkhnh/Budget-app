@@ -10,7 +10,7 @@ import { esc, fmt, icon, parseRefKey } from './ui.js';
 
 const KEY = 'budget-state-v1'; // storage key from the first version; the data inside carries its own version
 const THEME_KEY = 'budget-theme'; // 'system' | 'light' | 'dark', a per-phone display choice (not budget data)
-const APP_VERSION = '0.2.10';
+const APP_VERSION = '0.2.11';
 
 const $view = document.getElementById('view');
 const $tabs = document.getElementById('tabs');
@@ -136,28 +136,74 @@ function renderSheets() {
     }
     const full = FULL_SHEETS.has(sh.type);
     const z = 30 + i * 2;
-    parts.push(`${full ? '' : `<div class="backdrop" style="z-index:${z}" data-act="close-sheet"></div>`}
-      <div class="sheet ${full ? 'full' : ''} ${sh.type.startsWith('page-') ? 'page' : ''} ${sh.fresh ? 'enter' : ''}" style="z-index:${z + 1}" role="dialog" aria-modal="true">${full ? '' : '<div class="grabber"></div>'}${html}</div>`);
+    const kind = sh.type.startsWith('page-') ? 'page' : sh.type === 'note' ? 'note' : '';
+    const enter = sh.fresh === 'fade' ? 'fade-in' : sh.fresh ? 'enter' : '';
+    parts.push(`${full ? '' : `<div class="backdrop ${sh.fresh ? 'enter' : ''}" style="z-index:${z}" data-act="close-sheet"></div>`}
+      <div class="sheet ${full ? 'full' : ''} ${kind} ${enter}" style="z-index:${z + 1}" role="dialog" aria-modal="true">${full ? '' : '<div class="grabber"></div>'}${html}</div>`);
     sh.fresh = false;
   }
   $sheets.innerHTML = parts.join('');
   document.body.classList.toggle('locked', ui.sheets.length > 0);
+  // Like an iPhone push: the screen underneath slides a little to the left while a page is open.
+  $view.classList.toggle('behind', ui.sheets.some((s) => s.type.startsWith('page-')));
 }
 
+// animate: true slides in, 'fade' fades in (used where sliding would make iOS scroll), false is instant.
 function openSheet(sh, { animate = true } = {}) {
   ui.sheets.push({ ...sh, fresh: animate });
   renderSheets();
 }
 
-// The Note screen sits on top of the keypad screen and hands the chosen note back to it.
-function finishNote(note) {
+// The Note screen sits on top of the keypad screen and hands the chosen text back to it
+// (the note, or the salary name).
+function finishNote(text) {
+  const field = topSheet()?.field ?? 'note';
   const entry = ui.sheets.at(-2);
-  if (entry?.type === 'entry') entry.note = String(note ?? '').trim();
+  if (entry?.type === 'entry') entry[field] = String(text ?? '').trim();
   closeSheet();
 }
-function closeSheet() {
-  ui.sheets.pop();
-  renderSheets();
+
+const reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+let finishClosing = null; // completes a close whose animation is still playing
+
+// Plays the top sheet's exit animation (slide down, or slide right for a page), then removes it.
+// `after` runs once it is gone, e.g. to redraw the screen and show a message.
+function closeSheet(after) {
+  finishClosing?.(); // a quick second tap finishes the first close at once, so no tap is lost
+  const sheets = $sheets.querySelectorAll('.sheet');
+  const el = sheets[sheets.length - 1];
+  const top = topSheet();
+  const finish = () => {
+    ui.sheets.pop();
+    renderSheets();
+    after?.();
+  };
+  if (!el || !top || reducedMotion()) { finish(); return; }
+  el.classList.remove('enter', 'fade-in');
+  el.classList.add('leaving');
+  const backdrop = el.previousElementSibling;
+  if (backdrop?.classList.contains('backdrop')) backdrop.classList.add('leaving');
+  if (top.type.startsWith('page-') && !ui.sheets.slice(0, -1).some((s) => s.type.startsWith('page-'))) {
+    $view.classList.remove('behind'); // slide the screen underneath back while the page leaves
+  }
+  let done = false;
+  const once = () => {
+    if (done) return;
+    done = true;
+    finishClosing = null;
+    finish();
+  };
+  finishClosing = once;
+  el.addEventListener('animationend', (e) => { if (e.target === el) once(); });
+  setTimeout(once, 450); // in case the animation event never fires
+}
+
+// A quick fade for content that changes in place (switching tabs, weeks or months).
+function animateView() {
+  if (reducedMotion()) return;
+  $view.classList.remove('view-enter');
+  void $view.offsetWidth; // restart the animation
+  $view.classList.add('view-enter');
 }
 const topSheet = () => ui.sheets.at(-1);
 
@@ -248,18 +294,21 @@ function saveEntry() {
     if (!apply((s) => B.addTransfer(s, { date: sh.date, from: sh.from, to: sh.to, amount, note: sh.note }))) return;
     msg = `Moved ${fmt(amount)} to ${B.accountName(state, sh.to)}`;
   }
-  ui.sheets.pop();
-  render();
-  toast(msg, before);
+  closeSheet(() => {
+    render();
+    toast(msg, before);
+  });
 }
 
 // ---- Events ---------------------------------------------------------------------
 
 function goTab(tab) {
+  const changed = tab !== ui.tab;
   ui.tab = tab;
   ui.sheets = [];
   render();
   window.scrollTo(0, 0);
+  if (changed) animateView();
 }
 
 function confirmApply(question, fn, msg) {
@@ -274,6 +323,7 @@ function confirmApply(question, fn, msg) {
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]');
   if (!el || el.tagName === 'INPUT') return;
+  finishClosing?.(); // a screen still sliding away must not catch this tap
   const today = B.todayISO();
   const ds = el.dataset;
   const top = topSheet();
@@ -307,15 +357,19 @@ document.addEventListener('click', (e) => {
     case 'key':
       pressKey(ds.key);
       break;
-    case 'open-note': {
-      // No slide-in here: focusing a box that is still below the screen makes iOS scroll down to it.
-      openSheet({ type: 'note', note: top.note }, { animate: false });
+    case 'open-note':
+    case 'open-name': {
+      // Fade in, not slide in: focusing a box that is still below the screen makes iOS scroll down to it.
+      const sheet = ds.act === 'open-name'
+        ? { type: 'note', field: 'label', note: top.label, suggest: B.salaryLabel(top.earned) }
+        : { type: 'note', field: 'note', note: top.note };
+      openSheet(sheet, { animate: 'fade' });
       const input = document.getElementById('note-input');
       input?.focus({ preventScroll: true });
       requestAnimationFrame(() => {
         window.scrollTo(0, 0);
-        const sheet = input?.closest('.sheet');
-        if (sheet) sheet.scrollTop = 0;
+        const el = input?.closest('.sheet');
+        if (el) el.scrollTop = 0;
       });
       break;
     }
@@ -353,12 +407,14 @@ document.addEventListener('click', (e) => {
     case 'insights-mode':
       ui.insights = { mode: ds.mode, periodId: null, weekOf: null };
       render();
+      animateView();
       break;
     case 'insights-step': {
       const step = Number(ds.step);
       if (ui.insights.mode === 'month') ui.insights.periodId = B.shiftPeriod(ui.insights.periodId ?? B.periodIdOf(today), step);
       else ui.insights.weekOf = B.addDays(ui.insights.weekOf ?? B.weekRange(today).start, 7 * step);
       render();
+      animateView();
       break;
     }
     case 'open-page':
@@ -455,9 +511,12 @@ document.addEventListener('submit', (e) => {
   const before = state;
   const today = B.todayISO();
   const done = (msg, close = false) => {
-    if (close) ui.sheets.pop();
-    render();
-    toast(msg, before);
+    const show = () => {
+      render();
+      toast(msg, before);
+    };
+    if (close) closeSheet(show);
+    else show();
   };
   switch (f.dataset.form) {
     case 'stockMin':
@@ -544,6 +603,7 @@ document.addEventListener('change', async (e) => {
 
 // Keyboard on a computer: digits, dot, backspace, Enter, Escape.
 document.addEventListener('keydown', (e) => {
+  finishClosing?.();
   const sh = topSheet();
   if (!sh) return;
   if (e.key === 'Escape') { closeSheet(); return; }
