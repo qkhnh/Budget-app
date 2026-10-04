@@ -10,7 +10,7 @@ import { esc, fmt, icon, parseRefKey } from './ui.js';
 
 const KEY = 'budget-state-v1'; // storage key from the first version; the data inside carries its own version
 const THEME_KEY = 'budget-theme'; // 'system' | 'light' | 'dark', a per-phone display choice (not budget data)
-const APP_VERSION = '0.2.12';
+const APP_VERSION = '0.2.13';
 
 const $view = document.getElementById('view');
 const $tabs = document.getElementById('tabs');
@@ -51,12 +51,47 @@ function save() {
   try { localStorage.setItem(KEY, B.exportState(state)); } catch { /* storage blocked: Export backup still works */ }
 }
 
+// ---- Dialog (the app's own pop-up, instead of the phone's plain one) -----------------
+
+const $dialog = document.getElementById('dialog');
+let closeDialog = null;
+
+// Asks a question and resolves true (OK) or false (Cancel, or a tap outside).
+// danger: the OK button is red, for deleting things. cancel: null shows only one button.
+function ask(message, { ok = 'OK', cancel = 'Cancel', danger = false, detail = '' } = {}) {
+  closeDialog?.(false);
+  return new Promise((resolve) => {
+    $dialog.innerHTML = `<div class="dialog-backdrop" data-dialog="no"></div>
+      <div class="dialog" role="alertdialog" aria-modal="true" aria-label="${esc(message)}">
+        <p class="dialog-title">${esc(message)}</p>
+        ${detail ? `<p class="sub dialog-detail">${esc(detail)}</p>` : ''}
+        <div class="dialog-actions">
+          ${cancel === null ? '' : `<button class="btn soft" data-dialog="no">${esc(cancel)}</button>`}
+          <button class="btn ${danger ? 'btn-danger' : ''}" data-dialog="yes">${esc(ok)}</button>
+        </div>
+      </div>`;
+    $dialog.className = 'open';
+    closeDialog = (answer) => {
+      closeDialog = null;
+      $dialog.className = 'leaving';
+      setTimeout(() => { if (!closeDialog) { $dialog.className = ''; $dialog.innerHTML = ''; } }, 200);
+      resolve(answer);
+    };
+  });
+}
+const notice = (message) => ask(message, { ok: 'OK', cancel: null });
+
+$dialog.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-dialog]');
+  if (b) closeDialog?.(b.dataset.dialog === 'yes');
+});
+
 // Runs a core change. Shows the error and returns false if the core refuses it.
 function apply(fn) {
   try {
     state = fn(state);
   } catch (e) {
-    alert(e.message);
+    notice(e.message);
     return false;
   }
   save();
@@ -209,12 +244,18 @@ const topSheet = () => ui.sheets.at(-1);
 
 let undoState = null;
 let toastTimer = null;
+const TOAST_MS = 4000; // the usual length for a message with an Undo button
+
+function hideToast() {
+  clearTimeout(toastTimer);
+  $toast.classList.remove('show');
+}
 function toast(text, before = null) {
   undoState = before;
   $toast.innerHTML = `<span>${esc(text)}</span>${before ? '<button data-act="undo">Undo</button>' : ''}`;
   $toast.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => $toast.classList.remove('show'), 4500);
+  toastTimer = setTimeout(hideToast, TOAST_MS);
 }
 
 // ---- Keypad entry ---------------------------------------------------------------
@@ -264,7 +305,7 @@ function pressKey(k) {
   if (el) el.innerHTML = amountHTML(b);
 }
 
-function saveEntry() {
+async function saveEntry() {
   const sh = topSheet();
   const amount = Number(sh.buf);
   if (!(amount > 0)) {
@@ -289,7 +330,10 @@ function saveEntry() {
   } else {
     if (sh.from.type === 'pot' && sh.to.type !== 'stocks') {
       const pot = B.potLedger(state).pots.find((p) => p.id === sh.from.potId);
-      if (pot && amount > pot.free + 1e-9 && !confirm(`This uses ${fmt(amount - Math.max(0, pot.free))} of the money kept for stocks. Continue?`)) return;
+      if (pot && amount > pot.free + 1e-9 && !(await ask('Use money kept for stocks?', {
+        detail: `This takes ${fmt(amount - Math.max(0, pot.free))} from the money set aside for stocks in ${pot.label}.`,
+        ok: 'Use it',
+      }))) return;
     }
     if (!apply((s) => B.addTransfer(s, { date: sh.date, from: sh.from, to: sh.to, amount, note: sh.note }))) return;
     msg = `Moved ${fmt(amount)} to ${B.accountName(state, sh.to)}`;
@@ -311,8 +355,9 @@ function goTab(tab) {
   if (changed) animateView();
 }
 
-function confirmApply(question, fn, msg) {
-  if (!confirm(question)) return false;
+// Asks first (red Delete button by default), then runs the change. Resolves true if it happened.
+async function confirmApply(question, fn, msg, { ok = 'Delete', detail = '' } = {}) {
+  if (!(await ask(question, { ok, detail, danger: true }))) return false;
   const before = state;
   if (!apply(fn)) return false;
   render();
@@ -321,6 +366,7 @@ function confirmApply(question, fn, msg) {
 }
 
 document.addEventListener('click', (e) => {
+  if (!e.target.closest('#toast')) hideToast(); // moving on hides the last message early
   const el = e.target.closest('[data-act]');
   if (!el || el.tagName === 'INPUT') return;
   finishClosing?.(); // a screen still sliding away must not catch this tap
@@ -388,7 +434,8 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'delete-spend':
-      if (confirmApply('Delete this spend?', (s) => B.removeSpend(s, top.editId), 'Spend deleted')) closeSheet();
+      confirmApply('Delete this spend?', (s) => B.removeSpend(s, top.editId), 'Spend deleted')
+        .then((done) => done && closeSheet());
       break;
     case 'rent-paid': {
       const before = state;
@@ -456,13 +503,16 @@ document.addEventListener('click', (e) => {
       openSheet({ type: 'edit-pot', id: ds.id });
       break;
     case 'delete-pot':
-      if (confirmApply('Delete this salary?', (s) => B.removeSalary(s, ds.id), 'Salary deleted')) {
+      confirmApply('Delete this salary?', (s) => B.removeSalary(s, ds.id), 'Salary deleted').then((done) => {
+        if (!done) return;
         ui.sheets = ui.sheets.filter((x) => x.id !== ds.id);
         renderSheets();
-      }
+      });
       break;
     case 'delete-transfer':
-      if (confirmApply('Delete this transfer? The money goes back where it came from.', (s) => B.removeTransfer(s, ds.id), 'Transfer deleted')) closeSheet();
+      confirmApply('Delete this transfer?', (s) => B.removeTransfer(s, ds.id), 'Transfer deleted', {
+        detail: 'The money goes back where it came from.',
+      }).then((done) => done && closeSheet());
       break;
     case 'mark-done':
       openSheet({ type: 'done', periodId: top.periodId });
@@ -479,7 +529,7 @@ document.addEventListener('click', (e) => {
       confirmApply('Delete this instalment?', (s) => B.removeInstalment(s, ds.id), 'Instalment deleted');
       break;
     case 'del-override':
-      confirmApply('Remove this month\'s fixed budget?', (s) => B.clearBaseOverride(s, ds.period), 'Removed');
+      confirmApply('Remove this month\'s fixed budget?', (s) => B.clearBaseOverride(s, ds.period), 'Removed', { ok: 'Remove' });
       break;
     case 'undo':
       if (undoState) {
@@ -575,7 +625,9 @@ document.addEventListener('change', async (e) => {
     if (!file) return;
     const text = await file.text();
     t.value = '';
-    if (confirm('Replace everything in this app with the backup?')) {
+    if (await ask('Replace everything with this backup?', {
+      detail: 'What is in the app now will be replaced by the backup.', ok: 'Replace', danger: true,
+    })) {
       const before = state;
       if (apply(() => B.importState(text))) {
         ui.sheets = [];
@@ -601,6 +653,11 @@ document.addEventListener('change', async (e) => {
 
 // Keyboard on a computer: digits, dot, backspace, Enter, Escape.
 document.addEventListener('keydown', (e) => {
+  if (closeDialog) {
+    if (e.key === 'Escape') closeDialog(false);
+    else if (e.key === 'Enter') { e.preventDefault(); closeDialog(true); }
+    return;
+  }
   finishClosing?.();
   const sh = topSheet();
   if (!sh) return;

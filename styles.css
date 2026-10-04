@@ -333,6 +333,26 @@ details.add[open] > summary { margin-bottom: 10px; }
 .keypad .ok:active { opacity: .85; background: var(--ink); }
 .shake { animation: shake .3s; }
 
+/* ---- Dialog (confirmations and messages) --------------------------------- */
+
+#dialog { position: fixed; inset: 0; z-index: 50; display: none; place-items: center; padding: 24px; }
+#dialog.open, #dialog.leaving { display: grid; }
+.dialog-backdrop { position: absolute; inset: 0; background: var(--backdrop); animation: fade .2s ease; }
+.dialog {
+  position: relative; width: min(340px, 100%); background: var(--card); color: var(--text);
+  border-radius: 26px; padding: 22px 20px 18px; text-align: center;
+  animation: dialog-in .28s var(--ease-ios);
+}
+.dialog-title { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.35; }
+.dialog-detail { margin: 8px 0 0; }
+.dialog-actions { display: flex; gap: 10px; margin-top: 18px; }
+.dialog-actions .btn { flex: 1; }
+.btn.btn-danger { background: #c4413a; color: #fff; } /* same deep red in both modes, readable with white text */
+#dialog.leaving .dialog { animation: dialog-out .18s ease forwards; }
+#dialog.leaving .dialog-backdrop { animation: fade-out .18s ease forwards; }
+#dialog.leaving { pointer-events: none; }
+@keyframes dialog-in { from { opacity: 0; transform: scale(.94); } }
+@keyframes dialog-out { to { opacity: 0; transform: scale(.96); } }
 /* ---- Toast --------------------------------------------------------------- */
 
 #toast {
