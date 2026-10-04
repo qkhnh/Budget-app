@@ -77,14 +77,11 @@ function entrySheet(sh, state, today) {
     chips = `${noteButton(sh)}
       <div class="chips">${dateChipHTML('date')}</div>`;
   } else if (sh.mode === 'salary') {
+    // The earned month is worked out from the received date (pay is for the month before);
+    // it only suggests the name, and can still be changed on the salary's detail screen.
     const auto = B.salaryLabel(sh.earned);
-    const cur = B.periodIdOf(today);
-    const earnedOpts = [-4, -3, -2, -1, 0].map((k) => B.shiftPeriod(cur, k))
-      .map((id) => `<option value="${id}" ${id === sh.earned ? 'selected' : ''}>Earned ${esc(B.periodLabel(id))}</option>`).join('');
     chips = `<button class="chip-input note-btn" data-act="open-name">Name: ${esc(sh.label || auto)}</button>
-      <div class="chips">${dateChipHTML('date', 'Received ')}
-        <label class="chip">${icon.tag()}<span>Earned ${esc(B.periodLabel(sh.earned))}</span><select data-field="earned">${earnedOpts}</select></label>
-      </div>`;
+      <div class="chips">${dateChipHTML('date', 'Received ')}</div>`;
   } else {
     const fromGroups = accountOptions(state, today, 'from');
     const toGroups = accountOptions(state, today, 'to');
