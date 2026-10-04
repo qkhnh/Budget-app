@@ -10,7 +10,7 @@ import { esc, fmt, icon, parseRefKey } from './ui.js';
 
 const KEY = 'budget-state-v1'; // storage key from the first version; the data inside carries its own version
 const THEME_KEY = 'budget-theme'; // 'system' | 'light' | 'dark', a per-phone display choice (not budget data)
-const APP_VERSION = '0.2.11';
+const APP_VERSION = '0.2.12';
 
 const $view = document.getElementById('view');
 const $tabs = document.getElementById('tabs');
@@ -232,7 +232,7 @@ function newEntry(mode, preset = {}) {
   const today = B.todayISO();
   const sh = {
     type: 'entry', mode, buf: '', date: today, note: '', label: '',
-    earned: B.shiftPeriod(B.periodIdOf(today), -1), earnedTouched: false, from: null, to: null,
+    earned: B.shiftPeriod(B.periodIdOf(today), -1), from: null, to: null,
   };
   if (mode === 'transfer') {
     // Sending to stocks: start from the oldest salary that still owes its stock minimum.
@@ -591,10 +591,8 @@ document.addEventListener('change', async (e) => {
   if (field === 'date') {
     if (!t.value) return; // iOS "Clear" in the date picker
     sh.date = t.value;
-    if (sh.mode === 'salary' && !sh.earnedTouched) sh.earned = B.shiftPeriod(B.periodIdOf(t.value), -1);
-  } else if (field === 'earned') {
-    sh.earned = t.value;
-    sh.earnedTouched = true;
+    // Pay is for the month before the one it lands in; this also updates the suggested name.
+    if (sh.mode === 'salary') sh.earned = B.shiftPeriod(B.periodIdOf(t.value), -1);
   } else if (field === 'from' || field === 'to') {
     sh[field] = parseRefKey(t.value);
   }
