@@ -10,7 +10,7 @@ import { esc, fmt, icon, parseRefKey } from './ui.js';
 
 const KEY = 'budget-state-v1'; // storage key from the first version; the data inside carries its own version
 const THEME_KEY = 'budget-theme'; // 'system' | 'light' | 'dark', a per-phone display choice (not budget data)
-const APP_VERSION = '0.2.13';
+const APP_VERSION = '0.2.14';
 
 const $view = document.getElementById('view');
 const $tabs = document.getElementById('tabs');
@@ -292,7 +292,8 @@ function pressKey(k) {
   const sh = topSheet();
   if (sh?.type !== 'entry') return;
   let b = sh.buf;
-  if (k === 'back') b = b.slice(0, -1);
+  if (k === 'clear') b = '';
+  else if (k === 'back') b = b.slice(0, -1);
   else if (k === '.') { if (!b.includes('.')) b = `${b || '0'}.`; }
   else {
     const [int, dec] = b.split('.');
@@ -652,6 +653,17 @@ document.addEventListener('change', async (e) => {
 });
 
 // Keyboard on a computer: digits, dot, backspace, Enter, Escape.
+// Holding the keypad's delete key for half a second clears the whole amount.
+let holdTimer = null;
+document.addEventListener('pointerdown', (e) => {
+  if (!e.target.closest('[data-key="back"]')) return;
+  clearTimeout(holdTimer);
+  holdTimer = setTimeout(() => pressKey('clear'), 500);
+});
+for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
+  document.addEventListener(type, () => clearTimeout(holdTimer));
+}
+
 document.addEventListener('keydown', (e) => {
   if (closeDialog) {
     if (e.key === 'Escape') closeDialog(false);
