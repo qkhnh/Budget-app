@@ -93,20 +93,21 @@ function entrySheet(sh, state, today) {
       <div class="chips">${dateChipHTML('date')}</div>`;
   }
 
+  // Delete sits in the keypad's bottom-right corner so it never moves; hold it to clear.
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0'];
   return `<div class="inner">
     ${top}
     ${fromto}
     <div class="amount-area">
-      <div class="amount-line"><span data-amount>${amountHTML(sh.buf)}</span>
-        <button class="icon-btn" data-act="key" data-key="back" aria-label="Delete last digit">${icon.back(20)}</button></div>
+      <div class="amount-line"><span data-amount>${amountHTML(sh.buf)}</span></div>
       <div class="amount-hint" data-hint>${esc(entryHint(sh, state, today))}</div>
     </div>
     ${chips}
     <div class="keypad">
       ${keys.map((k) => `<button data-act="key" data-key="${k}">${k}</button>`).join('')}
-      <button class="ok" data-act="save-entry" aria-label="Save">${icon.check(26)}</button>
+      <button class="back" data-act="key" data-key="back" aria-label="Delete last digit, hold to clear">${icon.back(26)}</button>
     </div>
+    <button class="btn wide save-btn" data-act="save-entry">${editing ? 'Save changes' : 'Save'}</button>
   </div>`;
 }
 
