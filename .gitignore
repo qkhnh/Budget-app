@@ -4,3 +4,4 @@ seed.local.js
 node_modules/
 .claude/
 *.local.json
+.handoff/
