@@ -140,7 +140,6 @@ function alertsCard(r) {
   return `<div class="card alerts" id="alerts" data-card>
     ${label(icon.warn(), 'Alerts', `<span class="card-icon-right">${icon.refresh(18)}</span>`)}
     <div class="alert-row">
-      <span class="alert-tile ${r.status === 'overdue' ? 'bad' : 'warn'}">${icon.warn(16)}</span>
       <div class="grow"><div class="sub">Rent${text[1] ? ` · ${esc(text[1])}` : ''}</div><div class="alert-main">${esc(main[0].toUpperCase() + main.slice(1))}</div></div>
       <button class="pill-btn" data-act="rent-paid" data-period="${esc(r.periodId)}">Mark paid</button>
     </div>
@@ -200,7 +199,7 @@ export function renderHome(state, today, ui) {
     ${label(icon.list(), 'Recent transactions', more)}
     ${items.length
     ? `<div class="list">${shown.map((it) => row({
-      kind: it.kind, title: it.title, sub: it.date ? dayLabel(it.date, today) : 'Earlier', amount: it.amount, act: it.act,
+      title: it.title, sub: it.date ? dayLabel(it.date, today) : 'Earlier', amount: it.amount, act: it.act, // words only, no icon box
     })).join('')}</div>`
     : `<div class="empty">Nothing spent this month yet.</div>
        <button class="btn secondary wide" data-act="add">${icon.plus(16)} Add a spend</button>`}
