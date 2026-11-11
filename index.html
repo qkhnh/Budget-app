@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#eeece7">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#131518">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2f2">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#f2f2f2">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Budget">
@@ -15,10 +15,12 @@
   <script>
     // Apply the saved Light / Dark choice before the page draws, so it never flashes the other theme.
     try {
-      const t = localStorage.getItem('budget-theme');
+      // This design starts light (like the reference); Dark and System are choices in Settings.
+      const t = localStorage.getItem('budget-theme-v2') || 'light';
       if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-    } catch { /* storage blocked: follow the phone setting */ }
+    } catch { document.documentElement.dataset.theme = 'light'; }
   </script>
+  <link rel="preload" href="fonts/plus-jakarta-sans-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
   <title>Budget</title>
 </head>

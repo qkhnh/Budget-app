@@ -3,9 +3,9 @@
 // Each function returns HTML. app.js owns the sheet stack and handles the events.
 
 import * as B from './budget-core.js';
-import { esc, fmt, big, dateChip, dayLabel, periodLabelLong, refKey, icon, bubble } from './ui.js';
+import { esc, fmt, big, dateChip, dayLabel, periodLabelLong, refKey, icon, bubble, logo, count } from './ui.js';
 
-const closeBtn = '<button class="icon-btn" data-act="close-sheet" aria-label="Close">' + icon.close() + '</button>';
+const closeBtn = '<button class="icon-btn tile" data-act="close-sheet" aria-label="Close">' + icon.close() + '</button>';
 const head = (title, right = '<span class="ghost"></span>') => `<div class="sheet-head">${closeBtn}<h3>${esc(title)}</h3>${right}</div>`;
 
 // ---- Account pickers ------------------------------------------------------------
@@ -107,7 +107,7 @@ function entrySheet(sh, state, today) {
       ${keys.map((k) => `<button data-act="key" data-key="${k}">${k}</button>`).join('')}
       <button class="back" data-act="key" data-key="back" aria-label="Delete last digit, hold to clear">${icon.back(26)}</button>
     </div>
-    <button class="btn wide save-btn" data-act="save-entry">${editing ? 'Save changes' : 'Save'}</button>
+    <button class="btn primary wide save-btn" data-act="save-entry">${editing ? 'Save changes' : 'Save'}</button>
   </div>`;
 }
 
@@ -135,7 +135,7 @@ function potSheet(sh, state, today) {
   const ref = { type: 'pot', potId: p.id };
   return `<div class="inner">
     ${head(`Salary ${p.label}`, `<button class="icon-btn" data-act="edit-pot" data-id="${esc(p.id)}" aria-label="Edit">${icon.tag(18)}</button>`)}
-    <div class="center" style="font-size:44px">${big(p.balance, p.balance < 0 ? 'red' : '')}</div>
+    <div class="card amount-card"><div class="card-label">${icon.bolt()}<span>Balance</span></div><div class="numrow"><span class="num">${count(`pot-${p.id}`, p.balance, 'money', p.balance < 0 ? 'red' : '')}</span></div></div>
     <div class="card" style="padding-top:6px;padding-bottom:6px">
       <div class="kv"><span>Received</span><span>${fmt(p.amount)}${p.receivedOn ? ` on ${B.dm(p.receivedOn)}` : ''}</span></div>
       <div class="kv"><span>Earned</span><span>${p.earnedPeriod ? esc(B.periodLabel(p.earnedPeriod)) : 'Not set'}</span></div>
@@ -147,8 +147,7 @@ function potSheet(sh, state, today) {
       <button class="btn soft" data-act="transfer" data-from="${esc(refKey(ref))}">${icon.swap(16)} Move money</button>
       <button class="btn" data-act="transfer" data-from="${esc(refKey(ref))}" data-to="stocks" data-amount="${B.round2(p.reserved) || ''}">${icon.stocks(16)} To stocks</button>
     </div>
-    <div class="tiny">Activity</div>
-    ${activityList(state, ref, today)}
+    <div class="card list-card"><div class="card-label">${icon.list()}<span>Activity</span></div>${activityList(state, ref, today)}</div>
   </div>`;
 }
 
@@ -159,14 +158,13 @@ function bucketSheet(sh, state, today) {
   const key = esc(refKey(ref));
   return `<div class="inner">
     ${head(b.name, `<button class="icon-btn" data-act="rename-bucket" data-id="${esc(b.id)}" aria-label="Rename">${icon.tag(18)}</button>`)}
-    <div class="center" style="font-size:44px">${big(b.balance, b.balance < 0 ? 'red' : '')}</div>
+    <div class="card amount-card"><div class="card-label">${icon.list()}<span>Balance</span></div><div class="numrow"><span class="num">${count(`bucket-${b.id}`, b.balance, 'money', b.balance < 0 ? 'red' : '')}</span></div></div>
     <div class="grid3">
       <button class="btn soft" data-act="transfer" data-from="in" data-to="${key}">${icon.up(16)} Add</button>
       <button class="btn soft" data-act="transfer" data-from="${key}" data-to="out">${icon.down(16)} Spend</button>
       <button class="btn soft" data-act="transfer" data-from="${key}">${icon.swap(16)} Move</button>
     </div>
-    <div class="tiny">Activity</div>
-    ${activityList(state, ref, today)}
+    <div class="card list-card"><div class="card-label">${icon.list()}<span>Activity</span></div>${activityList(state, ref, today)}</div>
     <button class="btn danger" data-act="delete-bucket" data-id="${esc(b.id)}">Delete category</button>
   </div>`;
 }
@@ -179,9 +177,8 @@ function monthSheet(sh, state, today) {
   const ticked = Boolean(state.monthsDone?.[sh.periodId]);
   return `<div class="inner">
     ${head(B.periodLabel(sh.periodId))}
-    <div class="center">
-      <div style="font-size:44px">${big(p.remaining, p.remaining < 0 ? 'red' : '')}</div>
-      <div class="sub">${p.remaining < 0 ? 'over budget' : 'left'} · ${done ? 'Done' : 'Not done'}</div>
+    <div class="card amount-card"><div class="card-label">${icon.clock()}<span>${p.remaining < 0 ? 'Over budget' : 'Left'}</span></div>
+      <div class="numrow"><span class="num">${count(`month-${sh.periodId}`, p.remaining, 'money', p.remaining < 0 ? 'red' : '')}</span><span class="unit">${done ? 'Done' : 'Not done'}</span></div>
     </div>
     <div class="card" style="padding-top:6px;padding-bottom:6px">
       ${p.imported ? `<div class="kv"><span>Left over (from before the app)</span><span>${fmt(p.opening)}</span></div>` : `<div class="kv"><span>Budget</span><span>${fmt(p.available)}</span></div>`}
@@ -196,8 +193,7 @@ function monthSheet(sh, state, today) {
       ${ticked ? '<button class="btn soft" data-act="unmark-done">Mark not done</button>'
     : done ? '' : '<button class="btn soft" data-act="mark-done">Mark as done</button>'}
     </div>
-    <div class="tiny">Moves</div>
-    ${activityList(state, ref, today)}
+    <div class="card list-card"><div class="card-label">${icon.swap(14)}<span>Moves</span></div>${activityList(state, ref, today)}</div>
   </div>`;
 }
 
@@ -206,7 +202,7 @@ function transferSheet(sh, state, today) {
   if (!t) return null;
   return `<div class="inner">
     ${head('Transfer')}
-    <div class="center" style="font-size:44px">${big(t.amount)}</div>
+    <div class="card amount-card"><div class="card-label">${icon.swap(14)}<span>Amount</span></div><div class="numrow"><span class="num">${count(`transfer-${t.id}`, t.amount, 'money')}</span></div></div>
     <div class="card" style="padding-top:6px;padding-bottom:6px">
       <div class="kv"><span>From</span><span>${esc(B.accountName(state, t.from))}</span></div>
       <div class="kv"><span>To</span><span>${esc(B.accountName(state, t.to))}</span></div>
@@ -219,12 +215,12 @@ function transferSheet(sh, state, today) {
 
 // ---- Account pages (open from the cards on Accounts) -----------------------------
 
-const pageHead = (title, right = '<span class="ghost"></span>') => `<div class="sheet-head">
-  <button class="icon-btn" data-act="close-sheet" aria-label="Back">${icon.left()}</button><h3>${esc(title)}</h3>${right}</div>`;
+const pageHead = (title, right = '<span class="ghost"></span>') => `<div class="sheet-head nav">
+  <button class="icon-btn tile" data-act="close-sheet" aria-label="Back">${icon.left()}</button><h3>${esc(title)}</h3>${right}</div>`;
 
-const pageHero = (label, amount, sub = '') => `<div class="center" style="padding:8px 0 4px">
-  <div class="tiny">${esc(label)}</div>
-  <div style="font-size:44px">${big(amount, B.round2(amount) < 0 ? 'red' : '')}</div>
+const pageHero = (label, amount, sub = '', key = label) => `<div class="card amount-card">
+  <div class="card-label">${icon.coin()}<span>${esc(label)}</span></div>
+  <div class="numrow"><span class="num">${count(`page-${key}`, amount, 'money', B.round2(amount) < 0 ? 'red' : '')}</span></div>
   ${sub ? `<div class="sub">${esc(sub)}</div>` : ''}
 </div>`;
 
@@ -251,8 +247,7 @@ function budgetPage(state, today) {
       <button class="btn soft" data-act="transfer" data-from="${key}">${icon.swap(16)} Move money</button>
     </div>
     <button class="btn soft wide" data-act="goto" data-tab="insights">${icon.chart(16)} See spending</button>
-    <div class="tiny">Moves this month</div>
-    ${activityList(state, { type: 'budget', periodId: pid }, today)}
+    <div class="card list-card"><div class="card-label">${icon.swap(14)}<span>Moves this month</span></div>${activityList(state, { type: 'budget', periodId: pid }, today)}</div>
   </div>`;
 }
 
@@ -266,8 +261,7 @@ function salaryPage(state) {
       <button class="btn" data-act="log-salary">${icon.plus(16)} Log salary</button>
       <button class="btn soft" data-act="transfer" data-to="stocks">${icon.stocks(16)} To stocks</button>
     </div>
-    <div class="tiny">Each month's pay</div>
-    <div class="card" style="padding-top:4px;padding-bottom:4px"><div class="list">
+    <div class="card list-card"><div class="card-label">${icon.bolt()}<span>Each month's pay</span></div><div class="list">
       ${pots.map((x) => listRow({
     title: x.label || 'Salary',
     sub: [x.receivedOn ? `Received ${B.dm(x.receivedOn)}` : '', x.reserved > 0.004 ? `${fmt(x.reserved)} for stocks` : ''].filter(Boolean).join(' · '),
@@ -283,8 +277,7 @@ function otherPage(state) {
     ${pageHead('Other expenses')}
     ${pageHero('Total set aside', oth.totals.balance)}
     <button class="btn wide" data-act="new-bucket">${icon.plus(16)} New category</button>
-    <div class="tiny">Categories</div>
-    <div class="card" style="padding-top:4px;padding-bottom:4px"><div class="list">
+    <div class="card list-card"><div class="card-label">${icon.list()}<span>Categories</span></div><div class="list">
       ${oth.buckets.map((b) => listRow({
     title: b.name, sub: b.spent > 0.004 ? `${fmt(b.spent)} spent` : '', amount: b.balance,
     act: `data-act="open-bucket" data-id="${esc(b.id)}"`,
@@ -300,8 +293,7 @@ function stocksPage(state, today) {
     ${pageHead('Stocks')}
     ${pageHero('Sent so far', st.sent, `${fmt(st.stillFromSalary)} still to send from salary`)}
     <button class="btn wide" data-act="transfer" data-to="stocks">${icon.stocks(16)} Send to stocks</button>
-    <div class="tiny">Sent</div>
-    <div class="card" style="padding-top:4px;padding-bottom:4px"><div class="list">
+    <div class="card list-card"><div class="card-label">${icon.pie()}<span>Sent</span></div><div class="list">
       ${deposits.map((t) => listRow({
     title: `From ${B.accountName(state, t.from)}`,
     sub: [t.date ? dayLabel(t.date, today) : 'Before the app', t.note].filter(Boolean).join(' · '),
@@ -373,6 +365,122 @@ function doneSheet(sh) {
   </div>`;
 }
 
+// ---- Step screens (Settings) ----------------------------------------------------
+// Multi-field settings become full-screen steps with a ruler you drag under a fixed needle.
+// Each step edits one field; the last step saves through the same core calls the old forms used.
+
+export const FLOWS = {
+  stockMin: {
+    save: 'Save',
+    steps: [{ field: 'stockMin', kind: 'amount', title: ['Stock Money', 'Each Salary'], sub: 'Kept from every salary you log, for stocks.', max: 3000, step: 10 }],
+  },
+  rent: {
+    save: 'Save',
+    steps: [{ field: 'rentPerMonth', kind: 'amount', title: ['Set Your', 'Rent'], sub: "We'll take it out before you spend.", unit: '/ month', max: 5000, step: 5 }],
+  },
+  override: {
+    save: 'Save',
+    steps: [
+      { field: 'periodId', kind: 'month', title: ['Pick The', 'Month'], sub: 'The month that gets its own budget.' },
+      { field: 'amount', kind: 'amount', title: ['Set Your', 'Budget'], sub: "We'll use this instead of the lump sum split.", unit: '/ month', max: 5000, step: 5, preview: 'day' },
+    ],
+  },
+  lump: {
+    save: 'Add lump sum',
+    steps: [
+      { field: 'firstPeriod', kind: 'month', title: ['First', 'Month'], sub: 'The first month this money covers.' },
+      { field: 'months', kind: 'count', title: ['How Many', 'Months?'], sub: 'How long the money has to last.', unit: 'months', min: 1, max: 12, step: 1 },
+      { field: 'amount', kind: 'amount', title: ['Set Your', 'Budget'], sub: "The whole amount for all the months. We'll split it across them for you.", max: 30000, step: 50, preview: 'lump' },
+      { field: 'rentPerMonth', kind: 'amount', title: ['Set Your', 'Rent'], sub: "We'll take it out before you spend.", unit: '/ month', max: 5000, step: 5, preview: 'lump' },
+    ],
+  },
+};
+
+export function flowStart(flow, state, today) {
+  const s = state.settings;
+  const cur = B.periodIdOf(today);
+  const vals = {
+    stockMin: { stockMin: s.stockMin ?? 0 },
+    rent: { rentPerMonth: s.rentPerMonth ?? 0 },
+    override: { periodId: cur, amount: 0 },
+    lump: { firstPeriod: cur, months: 3, amount: 0, rentPerMonth: s.rentPerMonth ?? 0 },
+  }[flow];
+  return { type: 'flow', flow, step: 0, vals, manual: false };
+}
+
+const TICK = 8; // px between ruler ticks
+export const rulerMin = (st) => st.min ?? 0;
+export const rulerCount = (st) => Math.round((st.max - rulerMin(st)) / st.step);
+
+export function pickText(st, v) {
+  if (st.kind === 'count') return String(Math.round(v));
+  return fmt(v).replace(/\.00$/, '');
+}
+
+// "That gives you $x a month" under the ruler, from the same sum the Plans list shows.
+export function flowPreview(sh, st) {
+  const v = sh.vals;
+  if (st.preview === 'lump' && v.months > 0 && v.amount > 0) {
+    return `That gives you ${fmt((v.amount - (v.rentPerMonth || 0) * v.months) / v.months)} a month`;
+  }
+  if (st.preview === 'day' && v.amount > 0) {
+    const days = B.periodRange(v.periodId);
+    const n = Math.round((new Date(days.end) - new Date(days.start)) / 864e5);
+    return `About ${fmt(v.amount / n)} a day`;
+  }
+  return '';
+}
+
+export const flowReady = (sh, st) => st.kind !== 'amount' || Number(sh.vals[st.field]) > 0;
+
+function flowSheet(sh, state, today) {
+  const def = FLOWS[sh.flow];
+  const st = def.steps[sh.step];
+  const last = sh.step === def.steps.length - 1;
+  const v = sh.vals[st.field];
+  const dots = def.steps.length > 1
+    ? `<div class="dots" aria-label="Step ${sh.step + 1} of ${def.steps.length}">${def.steps.map((_, i) => `<i class="${i === sh.step ? 'on' : ''}"></i>`).join('')}</div>` : '';
+  let body;
+  if (st.kind === 'month') {
+    const cur = B.periodIdOf(today);
+    const ids = [];
+    for (let k = -3; k <= 9; k++) ids.push(B.shiftPeriod(cur, k));
+    body = `<div class="card list-card month-pick"><div class="list">${ids.map((id) => `<button class="row ${id === v ? 'picked' : ''}" data-act="flow-pick" data-v="${id}" aria-pressed="${id === v}">
+      <div class="grow"><div class="title">${esc(B.periodLabel(id))}</div>${id === cur ? '<div class="sub">This month</div>' : ''}</div>
+      <span class="radio">${id === v ? icon.check(14) : ''}</span></button>`).join('')}</div></div>`;
+  } else {
+    const n = rulerCount(st);
+    const ticks = Array.from({ length: n + 1 }, (_, i) => `<i class="${i % 10 === 0 ? 'l' : i % 5 === 0 ? 'm' : ''}"></i>`).join('');
+    body = `<div class="picker">
+      <button class="pick-value" data-act="flow-manual" aria-label="Type the amount"><span data-pick-text>${esc(pickText(st, v))}</span>${st.unit ? ` <span class="unit">${esc(st.unit)}</span>` : ''}</button>
+      <input class="input pick-input" data-pick-input inputmode="${st.kind === 'count' ? 'numeric' : 'decimal'}" value="${v || ''}" placeholder="0" ${sh.manual ? '' : 'hidden'} aria-label="${esc(st.title.join(' '))}">
+      <div class="ruler-wrap">
+        <div class="ruler-pick" data-ruler tabindex="0" role="slider" aria-label="${esc(st.title.join(' '))}"
+          aria-valuemin="${rulerMin(st)}" aria-valuemax="${st.max}" aria-valuenow="${v}" aria-valuetext="${esc(pickText(st, v))}"
+          data-min="${rulerMin(st)}" data-step="${st.step}" data-tick="${TICK}">
+          <div class="ruler-track">${ticks}</div>
+        </div>
+        <i class="needle" aria-hidden="true"></i>
+      </div>
+      <div class="pick-preview" data-pick-preview>${esc(flowPreview(sh, st))}</div>
+    </div>`;
+  }
+  return `<div class="inner flow">
+    <div class="flow-top">
+      <button class="icon-btn tile" data-act="${sh.step ? 'flow-back' : 'close-sheet'}" aria-label="${sh.step ? 'Back' : 'Close'}">${sh.step ? icon.left() : icon.close()}</button>
+      <div class="brand">${logo(22)}<span>Budget</span></div>
+      ${dots || '<span class="ghost"></span>'}
+    </div>
+    <h1 class="flow-title">${esc(st.title[0])}<br>${esc(st.title[1])}</h1>
+    <p class="sub flow-sub">${esc(st.sub)}</p>
+    ${body}
+    <div class="flow-actions">
+      ${st.kind === 'month' ? '' : '<button class="btn secondary wide" data-act="flow-manual">Enter manually</button>'}
+      <button class="btn primary wide" data-act="flow-next" ${flowReady(sh, st) ? '' : 'disabled'}>${last ? esc(def.save) : 'Continue'} ${icon.arrow(18)}</button>
+    </div>
+  </div>`;
+}
+
 // ---- Dispatcher -----------------------------------------------------------------
 
 export function renderSheet(sh, state, today) {
@@ -386,6 +494,7 @@ export function renderSheet(sh, state, today) {
     case 'bucket-form': return bucketFormSheet(sh, state);
     case 'done': return doneSheet(sh);
     case 'note': return noteSheet(sh, state);
+    case 'flow': return flowSheet(sh, state, today);
     case 'page-budget': return budgetPage(state, today);
     case 'page-salary': return salaryPage(state);
     case 'page-other': return otherPage(state);
