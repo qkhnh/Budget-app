@@ -149,7 +149,7 @@ function render() {
   else $view.innerHTML = renderSettings(state, today, installStatus(), ui);
 
   $tabs.innerHTML = `<div class="inner">${TABS.map((t) => (t
-    ? `<button class="${ui.tab === t[0] ? 'on' : ''}" data-act="tab" data-tab="${t[0]}" aria-label="${t[1]}">${t[2](22)}<span>${t[1]}</span></button>`
+    ? `<button class="${ui.tab === t[0] ? 'on' : ''}" data-act="tab" data-tab="${t[0]}" aria-label="${t[1]}"${ui.tab === t[0] ? ' aria-current="page"' : ''}>${t[2](22)}<span>${t[1]}</span></button>`
     : `<button data-act="add" aria-label="Add a spend"><span class="plus">${icon.plus(22)}</span></button>`)).join('')}</div>`;
   renderSheets();
 }
@@ -364,6 +364,11 @@ async function confirmApply(question, fn, msg, { ok = 'Delete', detail = '' } = 
   render();
   if (msg) toast(msg, before);
   return true;
+}
+
+// Safari's own pinch events: cancel them so the app never zooms (backs up touch-action in styles.css).
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
 }
 
 document.addEventListener('click', (e) => {
@@ -607,7 +612,7 @@ document.addEventListener('submit', (e) => {
       break;
     case 'mark-done': {
       const periodId = topSheet().periodId;
-      if (apply((s) => B.markMonthDone(s, periodId, { date: today, note: get('note') }))) done('Month ticked off', true);
+      if (apply((s) => B.markMonthDone(s, periodId, { date: today, note: get('note') }))) done('Marked as done', true);
       break;
     }
   }

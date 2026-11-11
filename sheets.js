@@ -66,7 +66,7 @@ function entrySheet(sh, state, today) {
   const top = editing
     ? head('Edit spend', `<button class="icon-btn" style="color:var(--red)" data-act="delete-spend" aria-label="Delete">${icon.trash()}</button>`)
     : `<div class="sheet-head">${closeBtn}
-        <div class="seg">${[['spend', 'Spend'], ['salary', 'Salary'], ['transfer', 'Transfer']].map(([m, l]) => `<button class="${sh.mode === m ? 'on' : ''}" data-act="entry-mode" data-mode="${m}">${l}</button>`).join('')}</div>
+        <div class="seg" role="group" aria-label="Type">${[['spend', 'Spend'], ['salary', 'Salary'], ['transfer', 'Transfer']].map(([m, l]) => `<button class="${sh.mode === m ? 'on' : ''}" aria-pressed="${sh.mode === m}" data-act="entry-mode" data-mode="${m}">${l}</button>`).join('')}</div>
         <span class="ghost"></span></div>`;
 
   const dateChipHTML = (field, prefix = '') => `<label class="chip">${icon.calendar()}<span>${prefix}${esc(dateChip(sh[field], today))}</span><input type="date" data-field="${field}" value="${esc(sh[field])}" required></label>`;
@@ -194,7 +194,7 @@ function monthSheet(sh, state, today) {
       ${p.remaining > 0.004 ? `<button class="btn" data-act="transfer" data-from="${esc(refKey(ref))}" data-amount="${B.round2(p.remaining)}">${icon.swap(16)} Move what's left</button>` : ''}
       ${p.remaining < -0.004 ? `<button class="btn" data-act="transfer" data-to="${esc(refKey(ref))}" data-amount="${B.round2(-p.remaining)}">${icon.swap(16)} Cover it</button>` : ''}
       ${ticked ? '<button class="btn soft" data-act="unmark-done">Mark not done</button>'
-    : done ? '' : '<button class="btn soft" data-act="mark-done">Tick off as done</button>'}
+    : done ? '' : '<button class="btn soft" data-act="mark-done">Mark as done</button>'}
     </div>
     <div class="tiny">Moves</div>
     ${activityList(state, ref, today)}
@@ -365,7 +365,7 @@ function noteSheet(sh, state) {
 
 function doneSheet(sh) {
   return `<div class="inner">
-    ${head(`Tick off ${B.periodLabel(sh.periodId)}`)}
+    ${head(`Mark ${B.periodLabel(sh.periodId)} as done`)}
     <form class="form" data-form="mark-done">
       <label class="field"><span>Note (optional)</span><input class="input" name="note" placeholder="e.g. Left it in the account" maxlength="60"></label>
       <button class="btn">Mark as done</button>

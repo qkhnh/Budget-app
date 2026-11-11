@@ -55,7 +55,6 @@ function gauge(p) {
     : '';
   const pct = p.total > 0 ? Math.round((p.spent / p.total) * 100) : 0;
   return `<div class="card gauge-card hero">
-    <div class="tiny">Spent ${pct}%</div>
     <div class="gauge">
       <svg viewBox="0 0 200 112" role="img" aria-label="${pct}% of this month's money spent">
         <path d="M 20 100 A 80 80 0 0 1 180 100" stroke="var(--card-2)" stroke-width="18" stroke-linecap="round" fill="none"/>
@@ -66,7 +65,7 @@ function gauge(p) {
         <div class="sub">${over ? 'over budget' : 'left this month'}</div>
       </div>
     </div>
-    <div class="gauge-ends"><span>Spent ${fmt(p.spent)}</span><span>of ${fmt(p.total)}</span></div>
+    <div class="gauge-ends"><span>Spent ${fmt(p.spent)} · ${pct}%</span><span>of ${fmt(p.total)}</span></div>
   </div>`;
 }
 
@@ -139,7 +138,8 @@ export function renderHome(state, today, ui) {
         <div class="amt ${B.round2(it.amount) > 0 ? 'green' : ''}">${fmt(it.amount, { sign: true })}</div>
       </button>`).join('')}</div>
       ${items.length > RECENT ? `<button class="btn soft wide" data-act="toggle-recent">${ui.homeAll ? 'Show less' : `Show all ${items.length}`}</button>` : ''}`
-    : '<div class="empty">Nothing logged yet. Tap + to add a spend.</div>');
+    : `<div class="empty empty-home">Nothing spent this month yet.
+        <button class="btn soft small" data-act="add">${icon.plus(16)} Add a spend</button></div>`);
   return out.join('');
 }
 
@@ -177,7 +177,7 @@ function chart(days, pace, today, mode) {
   const y = (v) => top + plotH - (v / max) * plotH;
   const parts = [];
   for (const v of [0, max / 2, max]) {
-    parts.push(`<text x="0" y="${y(v) + 3}" font-size="10" fill="var(--muted)">${Math.round(v)}</text>`);
+    parts.push(`<text x="0" y="${y(v) + 3}" font-size="12" fill="var(--muted)">${Math.round(v)}</text>`);
   }
   const WL = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   days.forEach((d, i) => {
@@ -189,7 +189,7 @@ function chart(days, pace, today, mode) {
     }
     const label = mode === 'week' ? WL[i] : i % 7 === 0 ? String(Number(d.date.slice(8))) : '';
     if (label) {
-      parts.push(`<text x="${x + bw / 2}" y="${H - 4}" font-size="10" text-anchor="middle" fill="${d.date === today ? 'var(--text)' : 'var(--muted)'}" font-weight="${d.date === today ? 700 : 400}">${label}</text>`);
+      parts.push(`<text x="${x + bw / 2}" y="${H - 4}" font-size="12" text-anchor="middle" fill="${d.date === today ? 'var(--text)' : 'var(--muted)'}" font-weight="${d.date === today ? 700 : 400}">${label}</text>`);
     }
   });
   if (pace > 0) {
@@ -234,9 +234,9 @@ export function renderInsights(state, today, ui) {
   const elapsed = days.filter((d) => d.date <= today).length || days.length;
   const p = B.periodSummary(state, pid, today);
 
-  const out = [header('Insights', '', `<div class="seg" role="tablist">
-    <button class="${mode === 'week' ? 'on' : ''}" data-act="insights-mode" data-mode="week">Week</button>
-    <button class="${mode === 'month' ? 'on' : ''}" data-act="insights-mode" data-mode="month">Month</button>
+  const out = [header('Insights', '', `<div class="seg" role="group" aria-label="Show by">
+    <button class="${mode === 'week' ? 'on' : ''}" aria-pressed="${mode === 'week'}" data-act="insights-mode" data-mode="week">Week</button>
+    <button class="${mode === 'month' ? 'on' : ''}" aria-pressed="${mode === 'month'}" data-act="insights-mode" data-mode="month">Month</button>
   </div>`)];
 
   out.push(`<div class="navbar">

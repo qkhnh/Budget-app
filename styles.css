@@ -9,14 +9,15 @@
   --card: #f9f8f5;
   --card-2: #e6e3dd;
   --text: #1a2230;     /* near-black navy */
-  --muted: #687284;
+  --muted: #575f6f;    /* 5.4:1 on --bg, 4.7:1 on the red and orange banners */
   --faint: #bcc2cb;
+  --placeholder: #80868f; /* 3:1 on --bg, for the big empty $0 */
   --line: #e3e0da;
   --ink: #141414;      /* black: main buttons, the + button, gauge fill */
   --on-ink: #ffffff;
   --hero: #b3c3d4;     /* muted light blue for the main card */
   --hero-text: #16202e;
-  --hero-muted: rgba(22, 32, 46, .66);
+  --hero-muted: rgba(22, 32, 46, .78); /* 5.5:1 on --hero */
   --hero-track: rgba(255, 255, 255, .5);
   --hero-ink: #141414;
   --green: #2f7350;
@@ -44,6 +45,7 @@
     --text: #edebe6;
     --muted: #9aa2ae;
     --faint: #3d424a;
+    --placeholder: #656b74;
     --line: #2a2e34;
     --ink: #edebe6;
     --on-ink: #141414;
@@ -69,6 +71,7 @@
   --text: #edebe6;
   --muted: #9aa2ae;
   --faint: #3d424a;
+  --placeholder: #656b74;
   --line: #2a2e34;
   --ink: #edebe6;
   --on-ink: #141414;
@@ -88,7 +91,8 @@
 :root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+/* No pinch or double-tap zoom: only scrolling gestures reach the page. iOS ignores user-scalable=no, but honours this. */
+html { -webkit-text-size-adjust: 100%; touch-action: pan-x pan-y; }
 /* Hide scrollbars everywhere; scrolling itself still works. */
 html, * { scrollbar-width: none; }
 ::-webkit-scrollbar { display: none; width: 0; height: 0; }
@@ -162,6 +166,19 @@ svg { display: block; }
 .btn.wide { width: 100%; }
 .btn:disabled { opacity: .4; }
 .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* Small controls keep their look but get a 44pt tap area (HIG accessibility › Mobility). */
+.btn.small, button.pill, .seg button, .icon-btn, .bubble[data-act], .text-btn { position: relative; }
+.btn.small::after, button.pill::after, .seg button::after, .icon-btn::after, .bubble[data-act]::after, .text-btn::after {
+  content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: max(100%, 44px); height: max(100%, 44px);
+}
+/* Every button shows it was pressed (HIG buttons › "Always include a press state"). Flat: no shadows. */
+.btn:active, .icon-btn:active, button.pill:active, .chip:active, .chip-input:active, .text-btn:active, .bubble[data-act]:active { opacity: .7; }
+button.row:active { opacity: .55; }
+.card.tap:active { opacity: .85; }
+.seg button:not(.on):active { color: var(--text); }
+.btn:disabled:active { opacity: .4; }
 .btn-row .btn { flex: 1 1 0; }
 .pill {
   display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
@@ -203,6 +220,7 @@ svg { display: block; }
 .banner.bad { background: var(--red-bg); }
 .banner .grow { flex: 1; }
 .banner b { display: block; }
+.banner .btn { min-height: 44px; } /* 44pt tap target */
 .gauge-card { padding: 20px 16px 18px; text-align: center; }
 .gauge { position: relative; max-width: 300px; margin: 0 auto; }
 .gauge svg { width: 100%; height: auto; overflow: visible; }
@@ -212,13 +230,15 @@ svg { display: block; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tx-list { display: grid; gap: 8px; }
 .tx { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: var(--card); border-radius: 22px; padding: 15px 18px; }
+.tx:active { background: var(--card-2); }
 .tx .grow { flex: 1; min-width: 0; }
+.empty-home { display: grid; justify-items: start; gap: 12px; }
 .tx .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tx .sub { font-size: 13px; }
 .tx .amt { font-family: var(--round); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Proportions follow K's sketch: sizes scale with the box width (cqw). */
 .stat { background: var(--card); border-radius: 22px; container-type: inline-size; aspect-ratio: 2.7; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-bottom: 2.5%; }
-.stat .tiny { font-size: 11px; font-size: 6.4cqw; line-height: 1; }
+.stat .tiny { font-size: 11px; font-size: max(11px, 6.4cqw); line-height: 1; } /* never below 11pt */
 .stat b { display: block; font-size: 19px; font-size: 11.6cqw; font-weight: 600; line-height: 1; margin-top: 4.4cqw; white-space: nowrap; }
 /* Trim the text to cap height and baseline so the gap above the label equals the gap below the number on any font. */
 @supports (text-box: trim-both cap alphabetic) {
@@ -269,7 +289,7 @@ details.add[open] > summary { margin-bottom: 10px; }
   padding: 6px 8px calc(env(safe-area-inset-bottom) + 4px);
 }
 #tabs .inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; }
-#tabs button { display: grid; justify-items: center; gap: 2px; padding: 4px 0; color: var(--muted); font-size: 10px; font-weight: 600; }
+#tabs button { display: grid; justify-items: center; gap: 2px; padding: 4px 0; color: var(--muted); font-size: 11px; font-weight: 600; }
 #tabs button.on { color: var(--text); }
 #tabs .plus { width: 50px; height: 50px; border-radius: 50%; background: var(--ink); color: var(--on-ink); display: grid; place-items: center; margin: 0 auto; }
 
@@ -301,7 +321,7 @@ details.add[open] > summary { margin-bottom: 10px; }
 .amount-area { flex: 1; display: grid; place-content: center; justify-items: center; gap: 12px; min-height: 140px; }
 .amount-line { display: flex; align-items: center; gap: 10px; }
 .amount-line .big { font-size: 64px; font-weight: 500; }
-.amount-line .big.placeholder { color: var(--faint); }
+.amount-line .big.placeholder, .amount-line .big.placeholder .cur { color: var(--placeholder); }
 .amount-hint { font-size: 14px; color: var(--muted); text-align: center; min-height: 19px; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .chip {
