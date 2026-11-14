@@ -4,13 +4,12 @@
 // Data is kept in this browser's localStorage. Use Export backup to keep a copy.
 
 import * as B from './budget-core.js';
-import { renderHome, renderInsights, renderAccounts, renderSettings, ring } from './views.js';
-import { renderSheet, amountHTML, FLOWS, flowStart, flowPreview, flowReady, pickText } from './sheets.js';
+import { renderHome, renderInsights, renderAccounts, renderSettings, dMon } from './views.js';
+import { renderSheet, amountHTML } from './sheets.js';
 import { esc, fmt, icon, parseRefKey } from './ui.js';
-import { countUp, stagger, setCount, initScrub, bindRuler, reduced } from './motion.js';
 
 const KEY = 'budget-state-v1'; // storage key from the first version; the data inside carries its own version
-const THEME_KEY = 'budget-theme-v2'; // 'light' | 'dark' | 'system', a per-phone display choice (not budget data). Starts light.
+const THEME_KEY = 'budget-theme'; // 'light' | 'dark' | 'system', a per-phone display choice (not budget data). Starts light.
 const APP_VERSION = '0.2.17';
 
 const $view = document.getElementById('view');
@@ -23,6 +22,9 @@ const ui = {
   tab: 'home',
   theme: loadTheme(),
   homeAll: false, // Home shows every transaction of the month instead of the latest few
+  homeCard: 'budget', // which account card is in front of the Home carousel
+  openDay: undefined, // the open day accordion on a page (undefined: the newest)
+  insDay: null, // the day chosen on the Insights route (null: today, or the last day)
   insights: { mode: 'month', periodId: null, weekOf: null },
   sheets: [], // stack of open sheets, top = last
 };
@@ -30,15 +32,15 @@ const ui = {
 // ---- Storage --------------------------------------------------------------------
 
 function loadTheme() {
-  try { return localStorage.getItem(THEME_KEY) || 'light'; } catch { return 'light'; }
+  try { const t = localStorage.getItem(THEME_KEY); return t === 'dark' || t === 'system' ? t : 'light'; } catch { return 'light'; }
 }
 
-// System follows the phone; Light and Dark override it (also for the status bar colour).
+// Light is the default look; Dark and System are choices in Settings (also sets the status bar colour).
 function applyTheme(theme) {
   const root = document.documentElement;
   if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
   else delete root.dataset.theme;
-  const forced = { light: '#f2f2f2', dark: '#111110' }[theme];
+  const forced = { light: '#ededea', dark: '#0f0f0f' }[theme];
   for (const m of document.querySelectorAll('meta[name="theme-color"]')) {
     m.dataset.original ??= m.content;
     m.content = forced ?? m.dataset.original;
@@ -117,7 +119,7 @@ async function init() {
   }
   save(); // also stores version 1 data in the new format
   render();
-  animateView(); // first open: cards rise in and the numbers count up
+  animateView(); // first open: cards rise in and the front amount counts up
 }
 
 // Tells you whether you are testing the real thing: installed app, offline files saved.
@@ -136,46 +138,152 @@ function installStatus() {
 // ---- Drawing --------------------------------------------------------------------
 
 const TABS = [
-  ['home', 'Home', icon.homeFill],
-  ['insights', 'Insights', icon.chartFill],
+  ['home', 'Home', icon.home],
+  ['insights', 'Insights', icon.chart],
   null, // the + button
-  ['accounts', 'Accounts', icon.walletFill],
-  ['settings', 'Settings', icon.gearFill],
+  ['accounts', 'Accounts', icon.wallet],
+  ['settings', 'Settings', icon.gear],
 ];
 
 function renderTabs() {
   let inner = $tabs.querySelector('.inner');
   if (!inner) {
     $tabs.innerHTML = `<div class="inner"><span class="tab-thumb" aria-hidden="true"></span>${TABS.map((t) => (t
-      ? `<button class="tab" data-act="tab" data-tab="${t[0]}" aria-label="${t[1]}">${t[2](20)}${ring()}</button>`
-      : `<button class="tab add" data-act="add" aria-label="Add a spend">${icon.plus(20)}</button>`)).join('')}</div>`;
+      ? `<button class="tab" data-act="tab" data-tab="${t[0]}" aria-label="${t[1]}">${t[2](24)}</button>`
+      : `<button class="tab add" data-act="add" aria-label="Add a spend">${icon.plus(22)}</button>`)).join('')}</div>`;
     inner = $tabs.querySelector('.inner');
   }
-  inner.style.setProperty('--a', TABS.findIndex((t) => t && t[0] === ui.tab));
+  let on = null;
   for (const b of inner.querySelectorAll('[data-tab]')) {
-    const on = b.dataset.tab === ui.tab;
-    b.classList.toggle('on', on);
-    if (on) b.setAttribute('aria-current', 'page');
-    else b.removeAttribute('aria-current');
+    const active = b.dataset.tab === ui.tab;
+    b.classList.toggle('on', active);
+    if (active) { b.setAttribute('aria-current', 'page'); on = b; } else b.removeAttribute('aria-current');
   }
+  placeThumb(inner.querySelector('.tab-thumb'), on);
+}
+
+// Moves a sliding pill (chip row or tab bar) under the chosen button.
+function placeThumb(thumb, btn) {
+  if (!thumb) return;
+  if (!btn) { thumb.style.opacity = '0'; return; }
+  thumb.style.opacity = '1';
+  thumb.style.width = `${btn.offsetWidth}px`;
+  thumb.style.transform = `translateX(${btn.offsetLeft}px)`;
+}
+function placeChipThumbs(root) {
+  for (const row of root.querySelectorAll('.chips-row')) placeThumb(row.querySelector('.chip-thumb'), row.querySelector('.chip-btn.on'));
+}
+
+// ---- Home carousel: the four account cards, the front one full size, the others smaller and lower ----
+const CARDS = ['budget', 'salary', 'other', 'stocks'];
+function carouselStep(c) {
+  const cards = c.querySelectorAll('[data-hero]');
+  return cards.length > 1 ? cards[1].offsetLeft - cards[0].offsetLeft : c.clientWidth;
+}
+function shapeCarousel(c) {
+  const mid = c.scrollLeft + c.clientWidth / 2;
+  for (const card of c.querySelectorAll('[data-hero]')) {
+    const d = Math.min(1, Math.abs(card.offsetLeft + card.offsetWidth / 2 - mid) / card.offsetWidth);
+    card.style.transform = reducedMotion() ? '' : `translateY(${(d * 8).toFixed(1)}px) scale(${(1 - d * 0.06).toFixed(3)})`;
+  }
+}
+function setupCarousel() {
+  const c = $view.querySelector('[data-carousel]');
+  if (!c) return;
+  c.scrollLeft = Math.max(0, CARDS.indexOf(ui.homeCard)) * carouselStep(c); // keep the card in front across redraws
+  shapeCarousel(c);
+  let frame = 0;
+  c.addEventListener('scroll', () => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      shapeCarousel(c);
+      const i = Math.max(0, Math.min(CARDS.length - 1, Math.round(c.scrollLeft / carouselStep(c))));
+      if (CARDS[i] !== ui.homeCard) {
+        ui.homeCard = CARDS[i];
+        const row = c.closest('section').querySelector('.chips-row');
+        row.querySelectorAll('.chip-btn').forEach((b, k) => { b.classList.toggle('on', k === i); b.setAttribute('aria-selected', String(k === i)); });
+        placeChipThumbs(row.parentElement);
+        countUp(c.querySelectorAll('[data-hero]')[i], true, true);
+      }
+    });
+  }, { passive: true });
+}
+
+// ---- Numbers that count up when first shown or when they change ----
+const shown = new Map();
+function countUp(root, entering, force = false) {
+  if (!root) return;
+  for (const el of root.querySelectorAll('.cnt')) {
+    const k = el.dataset.k;
+    const v = Number(el.dataset.v);
+    const prev = shown.get(k);
+    const seen = el.dataset.seen;
+    shown.set(k, v);
+    if (reducedMotion()) continue;
+    // In the carousel only the card in front counts up; the others wait until they come into view.
+    if (!force && el.closest('[data-hero]') && el.closest('[data-hero]') !== el.closest('[data-carousel]').querySelectorAll('[data-hero]')[Math.max(0, CARDS.indexOf(ui.homeCard))]) continue;
+    if (force && seen) continue;
+    let from;
+    if (entering) from = 0;
+    else if (prev !== undefined && Math.abs(prev - v) > 0.004) from = prev;
+    else continue;
+    el.dataset.seen = '1';
+    const t0 = performance.now();
+    const step = (now) => {
+      if (!el.isConnected) return;
+      const t = Math.min(1, (now - t0) / 700);
+      el.textContent = fmt(from + (v - from) * (1 - (1 - t) ** 3));
+      if (t < 1) requestAnimationFrame(step);
+    };
+    el.textContent = fmt(from);
+    requestAnimationFrame(step);
+  }
+}
+
+// ---- Accordions: open one, the others in the same list close ----
+function toggleAcc(head) {
+  const acc = head.closest('[data-acc]');
+  const open = !acc.classList.contains('open');
+  for (const other of acc.parentElement.querySelectorAll('[data-acc].open')) {
+    other.classList.remove('open');
+    other.querySelector('.acc-head').setAttribute('aria-expanded', 'false');
+  }
+  acc.classList.toggle('open', open);
+  head.setAttribute('aria-expanded', String(open));
+  const id = head.getAttribute('aria-controls');
+  if (id?.startsWith('day-') && acc.closest('#view')) ui.openDay = open ? id.slice(4) : null;
+}
+
+// Chip rows: the black pill slides to the tapped chip first, then the content changes.
+let chipTimer = null;
+function chipSwitch(el, then) {
+  const row = el.closest('.chips-row');
+  if (!row || reducedMotion()) { then(); return; }
+  row.querySelectorAll('.chip-btn').forEach((b) => b.classList.toggle('on', b === el));
+  placeChipThumbs(row.parentElement);
+  clearTimeout(chipTimer);
+  chipTimer = setTimeout(then, 260);
 }
 
 function render() {
   const today = B.todayISO();
-  $view.classList.remove('enter'); // entrance animations only run when animateView() asks
   if (ui.tab === 'home') $view.innerHTML = renderHome(state, today, ui);
   else if (ui.tab === 'insights') $view.innerHTML = renderInsights(state, today, ui);
   else if (ui.tab === 'accounts') $view.innerHTML = renderAccounts(state, today);
   else $view.innerHTML = renderSettings(state, today, installStatus(), ui);
 
-  stagger($view);
+  $view.classList.remove('enter');
+  [...$view.children].forEach((c, i) => c.style.setProperty('--i', i));
   renderTabs();
+  placeChipThumbs($view);
+  setupCarousel();
   renderSheets();
   countUp($view, false);
 }
 
 // Full-screen sheets cover everything; the others slide up from the bottom over a dimmed backdrop.
-const FULL_SHEETS = new Set(['entry', 'note', 'flow', 'page-budget', 'page-salary', 'page-other', 'page-stocks']);
+const FULL_SHEETS = new Set(['note', 'page-budget', 'page-salary', 'page-other', 'page-stocks']);
 
 // Draws the whole stack, so a detail sheet opened from a page shows on top of that page.
 function renderSheets() {
@@ -198,8 +306,9 @@ function renderSheets() {
     sh.fresh = false;
   }
   $sheets.innerHTML = parts.join('');
-  for (const el of $sheets.querySelectorAll('.sheet')) countUp(el, el.matches('.enter, .fade-in'));
-  bindFlow();
+  placeChipThumbs($sheets);
+  for (const el of $sheets.querySelectorAll('.big-input')) sizeBig(el);
+  for (const el of $sheets.querySelectorAll('.sheet')) countUp(el, el.matches('.enter, .fade-in'), true);
   document.body.classList.toggle('locked', ui.sheets.length > 0);
   // Like an iPhone push: the screen underneath slides a little to the left while a page is open.
   $view.classList.toggle('behind', ui.sheets.some((s) => s.type.startsWith('page-')));
@@ -255,103 +364,13 @@ function closeSheet(after) {
   setTimeout(once, 450); // in case the animation event never fires
 }
 
-// Cards rise in one after another and their numbers count up (opening a tab, switching week/month).
+// A quick fade for content that changes in place (switching tabs, weeks or months).
 function animateView() {
   if (reducedMotion()) return;
   $view.classList.remove('enter');
   void $view.offsetWidth; // restart the animations
   $view.classList.add('enter');
   countUp($view, true);
-}
-
-// ---- Insights cursor --------------------------------------------------------------
-// Dragging on either chart moves one cursor through both: the day's spend and the running total update live.
-function setCursor(i) {
-  ui.insights.cursor = i;
-  const spend = $view.querySelector('[data-chart]');
-  const line = $view.querySelector('[data-line]');
-  if (spend) {
-    spend.style.setProperty('--c', i);
-    const bars = [...spend.querySelectorAll('.bar')];
-    bars.forEach((b, k) => b.classList.toggle('on', k === i));
-    const labels = [...spend.querySelectorAll('.axis span')];
-    const shownHere = labels[i]?.classList.contains('show');
-    labels.forEach((l, k) => {
-      l.classList.toggle('on', k === i);
-      l.classList.toggle('near', k !== i && !shownHere && Math.abs(k - i) <= 2);
-    });
-    const b = bars[i];
-    if (b) {
-      spend.querySelector('.card-label span').textContent = `Spent · ${b.dataset.l}`;
-      setCount(spend.querySelector('[data-scrub-value] .cnt'), Number(b.dataset.v));
-    }
-  }
-  if (line) {
-    line.style.setProperty('--c', i);
-    const v = line.querySelectorAll('.cum-data i')[i];
-    const b = spend?.querySelectorAll('.bar')[i];
-    if (b) line.querySelector('.card-label span').textContent = `Running total · ${b.dataset.l}`;
-    if (v) setCount(line.querySelector('[data-cum-value] .cnt'), Number(v.dataset.v));
-  }
-}
-initScrub(setCursor);
-
-// ---- Step screens with the ruler ---------------------------------------------------
-function flowStep(sh) { return FLOWS[sh.flow].steps[sh.step]; }
-
-// Shows a new value everywhere on the step screen without redrawing it (the ruler keeps scrolling).
-function showFlowValue(sh, v) {
-  const st = flowStep(sh);
-  sh.vals[st.field] = v;
-  const el = $sheets.querySelector('.sheet:last-child');
-  if (!el) return;
-  const text = el.querySelector('[data-pick-text]');
-  if (text) text.textContent = pickText(st, v);
-  const r = el.querySelector('[data-ruler]');
-  if (r) { r.setAttribute('aria-valuenow', v); r.setAttribute('aria-valuetext', pickText(st, v)); }
-  const pv = el.querySelector('[data-pick-preview]');
-  if (pv) pv.textContent = flowPreview(sh, st);
-  const next = el.querySelector('[data-act="flow-next"]');
-  if (next) next.disabled = !flowReady(sh, st);
-}
-
-let placeRuler = null;
-function bindFlow() {
-  placeRuler = null;
-  const sh = topSheet();
-  if (sh?.type !== 'flow') return;
-  const el = $sheets.querySelector('.sheet:last-child [data-ruler]');
-  if (!el) return;
-  const st = flowStep(sh);
-  // The sheet is already in the page, so the ruler can be placed at the current value straight away.
-  placeRuler = bindRuler(el, Number(sh.vals[st.field]) || 0, (v) => {
-    const input = $sheets.querySelector('[data-pick-input]');
-    if (input && document.activeElement !== input) input.value = v || '';
-    showFlowValue(sh, v);
-  });
-}
-
-async function flowNext() {
-  const sh = topSheet();
-  const def = FLOWS[sh.flow];
-  const st = flowStep(sh);
-  if (!flowReady(sh, st)) return;
-  if (sh.step < def.steps.length - 1) {
-    sh.step += 1;
-    sh.manual = false;
-    sh.fresh = 'fade';
-    renderSheets();
-    return;
-  }
-  const v = sh.vals;
-  const before = state;
-  const ok = {
-    stockMin: () => apply((s) => B.updateSettings(s, { stockMin: v.stockMin })) && 'Stock minimum saved',
-    rent: () => apply((s) => B.updateSettings(s, { rentPerMonth: v.rentPerMonth })) && 'Rent settings saved',
-    override: () => apply((s) => B.setBaseOverride(s, v.periodId, v.amount)) && 'Month budget saved',
-    lump: () => apply((s) => B.addLumpSum(s, { firstPeriod: v.firstPeriod, months: v.months, amount: v.amount, rentPerMonth: v.rentPerMonth })) && 'Lump sum added',
-  }[sh.flow]();
-  if (ok) closeSheet(() => { render(); toast(ok, before); });
 }
 const topSheet = () => ui.sheets.at(-1);
 
@@ -460,42 +479,13 @@ async function saveEntry() {
 
 // ---- Events ---------------------------------------------------------------------
 
-let tabTimer = null;
 function goTab(tab) {
   const changed = tab !== ui.tab;
   ui.tab = tab;
   ui.sheets = [];
-  if (!changed || reducedMotion()) {
-    render();
-    window.scrollTo(0, 0);
-    if (changed) animateView();
-    return;
-  }
-  renderTabs(); // the white thumb starts sliding now
-  renderSheets();
-  const btn = $tabs.querySelector(`[data-tab="${tab}"]`);
-  btn?.classList.add('loading');
-  $view.classList.add('leaving');
-  clearTimeout(tabTimer);
-  tabTimer = setTimeout(() => {
-    btn?.classList.remove('loading');
-    $view.classList.remove('leaving');
-    render();
-    window.scrollTo(0, 0);
-    animateView();
-  }, 200);
-}
-
-// Segmented controls: the tapped segment shows the dotted ring, the thumb slides, then the content changes.
-let segTimer = null;
-function segSwitch(el, then) {
-  const segEl = el.closest('.seg');
-  if (!segEl || reducedMotion()) { then(); return; }
-  segEl.style.setProperty('--sel', el.dataset.segI);
-  for (const b of segEl.querySelectorAll('button')) b.classList.toggle('on', b === el);
-  el.classList.add('loading');
-  clearTimeout(segTimer);
-  segTimer = setTimeout(then, 300);
+  render();
+  window.scrollTo(0, 0);
+  if (changed) animateView();
 }
 
 // Asks first (red Delete button by default), then runs the change. Resolves true if it happened.
@@ -507,6 +497,82 @@ async function confirmApply(question, fn, msg, { ok = 'Delete', detail = '' } = 
   if (msg) toast(msg, before);
   return true;
 }
+
+// ---- Home timeline: drag the gold badge to look back through the month -------------
+// The centre label shows the day under the badge; Spent and Left show the totals up to that day.
+// On release it springs back to today.
+let tlDrag = null;
+function tlShow(box, i) {
+  const days = JSON.parse(box.dataset.days);
+  const n = days.length;
+  i = Math.max(0, Math.min(n - 1, i));
+  const today = Number(box.dataset.today);
+  box.dataset.at = i;
+  box.style.setProperty('--f', ((i + 0.5) / n).toFixed(4));
+  const keep = (sel) => { const el = box.querySelector(sel); if (el && el.dataset.orig === undefined) el.dataset.orig = el.innerHTML; return el; };
+  const centre = keep('[data-tl-center]');
+  const spent = keep('[data-tl-spent]');
+  const left = keep('[data-tl-left]');
+  const badge = box.querySelector('[data-tl-badge]');
+  const [date, cum] = days[i];
+  if (i === today) {
+    for (const el of [centre, spent, left]) if (el) el.innerHTML = el.dataset.orig;
+  } else {
+    if (centre) centre.textContent = dMon(date);
+    if (spent) spent.textContent = fmt(cum);
+    if (left) left.textContent = fmt(Number(box.dataset.total) - cum);
+  }
+  badge?.setAttribute('aria-valuenow', String(i + 1));
+  badge?.setAttribute('aria-valuetext', dMon(date));
+}
+function tlIndexAt(box, clientX) {
+  const line = box.querySelector('.tl-line').getBoundingClientRect();
+  const n = JSON.parse(box.dataset.days).length;
+  return Math.floor(Math.max(0, Math.min(0.9999, (clientX - line.left) / line.width)) * n);
+}
+document.addEventListener('pointerdown', (e) => {
+  const badge = e.target.closest('[data-tl-badge]');
+  if (!badge) return;
+  const box = badge.closest('[data-timeline]');
+  tlDrag = { box, id: e.pointerId };
+  try { badge.setPointerCapture(e.pointerId); } catch { /* fine without */ }
+  box.classList.add('dragging');
+});
+document.addEventListener('pointermove', (e) => {
+  if (!tlDrag || e.pointerId !== tlDrag.id) return;
+  tlShow(tlDrag.box, tlIndexAt(tlDrag.box, e.clientX));
+});
+const tlEnd = (e) => {
+  if (!tlDrag || e.pointerId !== tlDrag.id) return;
+  const { box } = tlDrag;
+  tlDrag = null;
+  box.classList.remove('dragging'); // the badge springs back to today
+  tlShow(box, Number(box.dataset.today));
+};
+document.addEventListener('pointerup', tlEnd);
+document.addEventListener('pointercancel', tlEnd);
+document.addEventListener('keydown', (e) => {
+  const badge = e.target.closest?.('[data-tl-badge]');
+  if (!badge) return;
+  const box = badge.closest('[data-timeline]');
+  const k = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
+  if (k) { e.preventDefault(); tlShow(box, Number(box.dataset.at ?? box.dataset.today) + k); }
+  else if (e.key === 'Escape') tlShow(box, Number(box.dataset.today));
+}, true);
+
+// Tapping the route between markers picks the nearest day.
+document.addEventListener('click', (e) => {
+  const r = e.target.closest('[data-route]');
+  if (!r || e.target.closest('[data-act]')) return;
+  const box = r.getBoundingClientRect();
+  const n = Number(getComputedStyle(r).getPropertyValue('--n')) || 1;
+  const x = (e.clientX - box.left) / box.width;
+  const W = 340;
+  const i = Math.round(((x * W - 18) / (W - 36)) * (n - 1));
+  ui.insDay = Math.max(0, Math.min(n - 1, i));
+  render();
+  $view.querySelector('[data-day-sheet]')?.classList.add('swap');
+});
 
 // Safari's own pinch events: cancel them so the app never zooms (backs up touch-action in styles.css).
 for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
@@ -529,39 +595,14 @@ document.addEventListener('click', (e) => {
     case 'add':
       openSheet(newEntry('spend'));
       break;
-    case 'alerts': {
-      if (B.dashboard(state, today).rent.status === 'none') { toast('No alerts right now'); break; }
-      if (ui.tab !== 'home') { ui.tab = 'home'; ui.sheets = []; render(); }
-      document.getElementById('alerts')?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' });
-      break;
-    }
-    case 'open-flow':
-      openSheet(flowStart(ds.flow, state, today));
-      break;
-    case 'flow-next':
-      flowNext();
-      break;
-    case 'flow-back':
-      top.step -= 1;
-      top.manual = false;
-      top.fresh = 'fade';
-      renderSheets();
-      break;
-    case 'flow-pick':
-      top.vals[flowStep(top).field] = ds.v;
-      renderSheets();
-      break;
-    case 'flow-manual': {
-      top.manual = true;
-      const input = $sheets.querySelector('[data-pick-input]');
-      if (input) { input.hidden = false; input.focus({ preventScroll: true }); input.select?.(); }
-      break;
-    }
     case 'theme':
-      ui.theme = ds.theme;
-      try { localStorage.setItem(THEME_KEY, ui.theme); } catch { /* still applies until the app is closed */ }
-      applyTheme(ui.theme);
-      render();
+      if (ds.theme === ui.theme) break;
+      chipSwitch(el, () => {
+        ui.theme = ds.theme;
+        try { localStorage.setItem(THEME_KEY, ui.theme); } catch { /* still applies until the app is closed */ }
+        applyTheme(ui.theme);
+        render();
+      });
       break;
     case 'toggle-recent':
       ui.homeAll = !ui.homeAll;
@@ -615,7 +656,10 @@ document.addEventListener('click', (e) => {
       break;
     case 'rent-paid': {
       const before = state;
-      if (apply((s) => B.markRentPaid(s, ds.period, today))) { render(); toast('Rent marked as paid', before); }
+      if (apply((s) => B.markRentPaid(s, ds.period, today))) {
+        const show = () => { render(); toast('Rent marked as paid', before); };
+        if (top?.type === 'rent-options') closeSheet(show); else show();
+      }
       break;
     }
     case 'rent-toggle': {
@@ -629,17 +673,57 @@ document.addEventListener('click', (e) => {
     }
     case 'insights-mode':
       if (ds.mode === ui.insights.mode) break;
-      segSwitch(el, () => {
-        ui.insights = { mode: ds.mode, periodId: null, weekOf: null, cursor: null };
-        render();
-        animateView();
-      });
+      chipSwitch(el, () => { ui.insights = { mode: ds.mode, periodId: null, weekOf: null }; ui.insDay = null; render(); animateView(); });
+      break;
+    case 'home-card': {
+      const c = $view.querySelector('[data-carousel]');
+      const i = CARDS.indexOf(ds.card);
+      if (c && i >= 0) c.scrollTo({ left: i * carouselStep(c), behavior: reducedMotion() ? 'auto' : 'smooth' });
+      break;
+    }
+    case 'rent-options':
+      openSheet({ type: 'rent-options', period: ds.period });
+      break;
+    case 'pick-day':
+      ui.insDay = Number(ds.i);
+      render();
+      $view.querySelector('[data-day-sheet]')?.classList.add('swap');
+      break;
+    case 'ins-today':
+      ui.insDay = null;
+      render();
+      $view.querySelector('[data-day-sheet]')?.classList.add('swap');
+      break;
+    case 'ins-filter':
+      openSheet({ type: 'mode', mode: ui.insights.mode });
+      break;
+    case 'set-mode':
+      if (ds.mode === ui.insights.mode) { closeSheet(); break; }
+      chipSwitch(el, () => closeSheet(() => { ui.insights = { mode: ds.mode, periodId: null, weekOf: null }; ui.insDay = null; render(); animateView(); }));
+      break;
+    case 'quick-note':
+      openSheet(newEntry('spend'));
+      openSheet({ type: 'note', field: 'note', note: '' }, { animate: 'fade' });
+      break;
+    case 'entry-note':
+      top.note = top.note === ds.note ? '' : ds.note;
+      renderSheets();
+      break;
+    case 'toggle-acc':
+      toggleAcc(el);
+      break;
+    case 'page-tab':
+      if (ds.tab === (top.tab ?? 'activity')) break;
+      chipSwitch(el, () => { top.tab = ds.tab; renderSheets(); });
+      break;
+    case 'open-form':
+      openSheet({ type: 'form', form: ds.formType });
       break;
     case 'insights-step': {
       const step = Number(ds.step);
       if (ui.insights.mode === 'month') ui.insights.periodId = B.shiftPeriod(ui.insights.periodId ?? B.periodIdOf(today), step);
       else ui.insights.weekOf = B.addDays(ui.insights.weekOf ?? B.weekRange(today).start, 7 * step);
-      ui.insights.cursor = null;
+      ui.insDay = null;
       render();
       animateView();
       break;
@@ -745,7 +829,7 @@ document.addEventListener('submit', (e) => {
       render();
       toast(msg, before);
     };
-    if (close) closeSheet(show);
+    if (close || f.closest('.sheet')) closeSheet(show); // forms in a sheet close it when saved
     else show();
   };
   switch (f.dataset.form) {
@@ -792,17 +876,11 @@ document.addEventListener('submit', (e) => {
   }
 });
 
+// The big amount field grows with what is typed, so the $ and the number stay centred together.
+function sizeBig(el) { el.style.width = `${Math.max(1, (el.value || el.placeholder).length) + 0.4}ch`; }
+
 document.addEventListener('input', (e) => {
-  if (e.target.matches?.('[data-pick-input]')) {
-    const sh = topSheet();
-    const st = flowStep(sh);
-    let v = num(e.target.value);
-    if (!Number.isFinite(v) || v < 0) v = 0;
-    if (st.kind === 'count') v = Math.max(st.min ?? 0, Math.min(st.max, Math.round(v)));
-    showFlowValue(sh, v);
-    placeRuler?.(v);
-    return;
-  }
+  if (e.target.classList?.contains('big-input')) sizeBig(e.target);
   const field = e.target.dataset?.field;
   const sh = topSheet();
   if (sh?.type === 'entry' && (field === 'note' || field === 'label')) sh[field] = e.target.value;
@@ -810,11 +888,6 @@ document.addEventListener('input', (e) => {
 
 document.addEventListener('change', async (e) => {
   const t = e.target;
-  if (t.dataset?.act === 'rent-remind') {
-    const before = state;
-    if (apply((s) => B.updateSettings(s, { rentRemindDays: Number(t.value) }))) { render(); toast('Rent settings saved', before); }
-    return;
-  }
   if (t.dataset?.act === 'import') {
     const file = t.files[0];
     if (!file) return;
@@ -870,10 +943,6 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { closeSheet(); return; }
   if (sh.type === 'note') {
     if (e.key === 'Enter') { e.preventDefault(); finishNote(e.target.value); }
-    return;
-  }
-  if (sh.type === 'flow') {
-    if (e.key === 'Enter' && !e.target.matches?.('button')) { e.preventDefault(); flowNext(); }
     return;
   }
   if (sh.type !== 'entry') return;

@@ -3,9 +3,10 @@
 // Each function returns HTML. app.js owns the sheet stack and handles the events.
 
 import * as B from './budget-core.js';
-import { esc, fmt, big, dateChip, dayLabel, periodLabelLong, refKey, icon, bubble, logo, count } from './ui.js';
+import { esc, fmt, big, dateChip, dayLabel, periodLabelLong, refKey, icon, bubble } from './ui.js';
+import { chips, num, level, statusLine, dayAccordion, budgetItems, rangeLabel, streets, dMon } from './views.js';
 
-const closeBtn = '<button class="icon-btn tile" data-act="close-sheet" aria-label="Close">' + icon.close() + '</button>';
+const closeBtn = '<button class="icon-btn" data-act="close-sheet" aria-label="Close">' + icon.close() + '</button>';
 const head = (title, right = '<span class="ghost"></span>') => `<div class="sheet-head">${closeBtn}<h3>${esc(title)}</h3>${right}</div>`;
 
 // ---- Account pickers ------------------------------------------------------------
@@ -38,7 +39,14 @@ function selectOptions(groups, selectedKey) {
 
 // ---- Keypad entry ---------------------------------------------------------------
 
-const noteButton = (sh) => `<button class="chip-input note-btn ${sh.note ? '' : 'empty-note'}" data-act="open-note">${esc(sh.note || 'Add a note')}</button>`;
+const noteButton = (sh, state) => {
+  const recent = B.recentNotes(state, 8);
+  const all = sh.note && !recent.includes(sh.note) ? [sh.note, ...recent] : recent;
+  return `<div class="note-chips" role="group" aria-label="Note">
+    ${all.map((n) => `<button class="chip-btn ${n === sh.note ? 'on' : ''}" aria-pressed="${n === sh.note}" data-act="entry-note" data-note="${esc(n)}">${esc(n)}</button>`).join('')}
+    <button class="chip-btn type-note" data-act="open-note">${icon.plus(14)} ${all.length ? 'Other note' : 'Add a note'}</button>
+  </div>`;
+};
 
 export function amountHTML(buf) {
   if (!buf) return '<span class="big placeholder"><span class="cur">$</span>0</span>';
@@ -74,7 +82,7 @@ function entrySheet(sh, state, today) {
   let fromto = '';
   let chips = '';
   if (sh.mode === 'spend' || editing) {
-    chips = `${noteButton(sh)}
+    chips = `${noteButton(sh, state)}
       <div class="chips">${dateChipHTML('date')}</div>`;
   } else if (sh.mode === 'salary') {
     // The earned month is worked out from the received date (pay is for the month before);
@@ -89,7 +97,7 @@ function entrySheet(sh, state, today) {
       <label><span class="k">From</span><span class="v">${esc(B.accountName(state, sh.from))}</span>${icon.right(16)}<select data-field="from">${selectOptions(fromGroups, refKey(sh.from))}</select></label>
       <label><span class="k">To</span><span class="v">${esc(B.accountName(state, sh.to))}</span>${icon.right(16)}<select data-field="to">${selectOptions(toGroups, refKey(sh.to))}</select></label>
     </div>`;
-    chips = `${noteButton(sh)}
+    chips = `${noteButton(sh, state)}
       <div class="chips">${dateChipHTML('date')}</div>`;
   }
 
@@ -107,7 +115,7 @@ function entrySheet(sh, state, today) {
       ${keys.map((k) => `<button data-act="key" data-key="${k}">${k}</button>`).join('')}
       <button class="back" data-act="key" data-key="back" aria-label="Delete last digit, hold to clear">${icon.back(26)}</button>
     </div>
-    <button class="btn primary wide save-btn" data-act="save-entry">${editing ? 'Save changes' : 'Save'}</button>
+    <div class="fixed-bar"><button class="btn wide save-btn" data-act="save-entry">${editing ? 'Save changes' : 'Save'}</button></div>
   </div>`;
 }
 
@@ -135,7 +143,7 @@ function potSheet(sh, state, today) {
   const ref = { type: 'pot', potId: p.id };
   return `<div class="inner">
     ${head(`Salary ${p.label}`, `<button class="icon-btn" data-act="edit-pot" data-id="${esc(p.id)}" aria-label="Edit">${icon.tag(18)}</button>`)}
-    <div class="card amount-card"><div class="card-label">${icon.bolt()}<span>Balance</span></div><div class="numrow"><span class="num">${count(`pot-${p.id}`, p.balance, 'money', p.balance < 0 ? 'red' : '')}</span></div></div>
+    <div class="card hero sheet-hero"><div class="tiny">Balance</div><div>${big(p.balance, p.balance < 0 ? 'red' : '')}</div></div>
     <div class="card" style="padding-top:6px;padding-bottom:6px">
       <div class="kv"><span>Received</span><span>${fmt(p.amount)}${p.receivedOn ? ` on ${B.dm(p.receivedOn)}` : ''}</span></div>
       <div class="kv"><span>Earned</span><span>${p.earnedPeriod ? esc(B.periodLabel(p.earnedPeriod)) : 'Not set'}</span></div>
@@ -147,7 +155,8 @@ function potSheet(sh, state, today) {
       <button class="btn soft" data-act="transfer" data-from="${esc(refKey(ref))}">${icon.swap(16)} Move money</button>
       <button class="btn" data-act="transfer" data-from="${esc(refKey(ref))}" data-to="stocks" data-amount="${B.round2(p.reserved) || ''}">${icon.stocks(16)} To stocks</button>
     </div>
-    <div class="card list-card"><div class="card-label">${icon.list()}<span>Activity</span></div>${activityList(state, ref, today)}</div>
+    <div class="tiny">Activity</div>
+    ${activityList(state, ref, today)}
   </div>`;
 }
 
@@ -158,13 +167,14 @@ function bucketSheet(sh, state, today) {
   const key = esc(refKey(ref));
   return `<div class="inner">
     ${head(b.name, `<button class="icon-btn" data-act="rename-bucket" data-id="${esc(b.id)}" aria-label="Rename">${icon.tag(18)}</button>`)}
-    <div class="card amount-card"><div class="card-label">${icon.list()}<span>Balance</span></div><div class="numrow"><span class="num">${count(`bucket-${b.id}`, b.balance, 'money', b.balance < 0 ? 'red' : '')}</span></div></div>
+    <div class="card hero sheet-hero"><div class="tiny">Balance</div><div>${big(b.balance, b.balance < 0 ? 'red' : '')}</div></div>
     <div class="grid3">
       <button class="btn soft" data-act="transfer" data-from="in" data-to="${key}">${icon.up(16)} Add</button>
       <button class="btn soft" data-act="transfer" data-from="${key}" data-to="out">${icon.down(16)} Spend</button>
       <button class="btn soft" data-act="transfer" data-from="${key}">${icon.swap(16)} Move</button>
     </div>
-    <div class="card list-card"><div class="card-label">${icon.list()}<span>Activity</span></div>${activityList(state, ref, today)}</div>
+    <div class="tiny">Activity</div>
+    ${activityList(state, ref, today)}
     <button class="btn danger" data-act="delete-bucket" data-id="${esc(b.id)}">Delete category</button>
   </div>`;
 }
@@ -177,8 +187,10 @@ function monthSheet(sh, state, today) {
   const ticked = Boolean(state.monthsDone?.[sh.periodId]);
   return `<div class="inner">
     ${head(B.periodLabel(sh.periodId))}
-    <div class="card amount-card"><div class="card-label">${icon.clock()}<span>${p.remaining < 0 ? 'Over budget' : 'Left'}</span></div>
-      <div class="numrow"><span class="num">${count(`month-${sh.periodId}`, p.remaining, 'money', p.remaining < 0 ? 'red' : '')}</span><span class="unit">${done ? 'Done' : 'Not done'}</span></div>
+    <div class="card hero sheet-hero">
+      <div class="tiny">${p.remaining < 0 ? 'Over budget' : 'Left'}</div>
+      <div>${big(p.remaining, p.remaining < 0 ? 'red' : '')}</div>
+      <div class="sub">${done ? 'Done' : 'Not done'}</div>
     </div>
     <div class="card" style="padding-top:6px;padding-bottom:6px">
       ${p.imported ? `<div class="kv"><span>Left over (from before the app)</span><span>${fmt(p.opening)}</span></div>` : `<div class="kv"><span>Budget</span><span>${fmt(p.available)}</span></div>`}
@@ -193,7 +205,8 @@ function monthSheet(sh, state, today) {
       ${ticked ? '<button class="btn soft" data-act="unmark-done">Mark not done</button>'
     : done ? '' : '<button class="btn soft" data-act="mark-done">Mark as done</button>'}
     </div>
-    <div class="card list-card"><div class="card-label">${icon.swap(14)}<span>Moves</span></div>${activityList(state, ref, today)}</div>
+    <div class="tiny">Moves</div>
+    ${activityList(state, ref, today)}
   </div>`;
 }
 
@@ -202,7 +215,7 @@ function transferSheet(sh, state, today) {
   if (!t) return null;
   return `<div class="inner">
     ${head('Transfer')}
-    <div class="card amount-card"><div class="card-label">${icon.swap(14)}<span>Amount</span></div><div class="numrow"><span class="num">${count(`transfer-${t.id}`, t.amount, 'money')}</span></div></div>
+    <div class="card hero sheet-hero"><div class="tiny">Amount</div><div>${big(t.amount)}</div></div>
     <div class="card" style="padding-top:6px;padding-bottom:6px">
       <div class="kv"><span>From</span><span>${esc(B.accountName(state, t.from))}</span></div>
       <div class="kv"><span>To</span><span>${esc(B.accountName(state, t.to))}</span></div>
@@ -215,92 +228,137 @@ function transferSheet(sh, state, today) {
 
 // ---- Account pages (open from the cards on Accounts) -----------------------------
 
-const pageHead = (title, right = '<span class="ghost"></span>') => `<div class="sheet-head nav">
-  <button class="icon-btn tile" data-act="close-sheet" aria-label="Back">${icon.left()}</button><h3>${esc(title)}</h3>${right}</div>`;
-
-const pageHero = (label, amount, sub = '', key = label) => `<div class="card amount-card">
-  <div class="card-label">${icon.coin()}<span>${esc(label)}</span></div>
-  <div class="numrow"><span class="num">${count(`page-${key}`, amount, 'money', B.round2(amount) < 0 ? 'red' : '')}</span></div>
-  ${sub ? `<div class="sub">${esc(sub)}</div>` : ''}
-</div>`;
-
 const listRow = ({ title, sub = '', amount, act }) => `<button class="row" ${act}>
   <div class="grow"><div class="title">${esc(title)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>
   <div class="amt ${B.round2(amount) < 0 ? 'red' : ''}">${fmt(amount)}</div><span class="chev">${icon.right(18)}</span></button>`;
 
-function budgetPage(state, today) {
+const kvCard = (rows) => `<div class="card kv-card">${rows.filter(Boolean).map(([k, v, cls = '']) => `<div class="kv"><span>${esc(k)}</span><span class="${cls}">${esc(v)}</span></div>`).join('')}</div>`;
+
+function page(sh, { title, status, key, amount, red = false, pill, link = '', text = '', tabs, body, headAct = '', action }) {
+  const tab = tabs.some(([v]) => v === sh.tab) ? sh.tab : tabs[0][0];
+  return `<div class="inner page-wrap">
+    <div class="page-head">${streets()}
+      <button class="round on-dark" data-act="close-sheet" aria-label="Back">${icon.left()}</button>
+      ${headAct || '<span></span>'}
+    </div>
+    <div class="page-panel">
+      <div class="grabber" aria-hidden="true"></div>
+      <div class="page-top">
+        <div class="grow"><h2>${esc(title)}</h2>${status}</div>
+        <div class="rating">${pill ? `<span class="outline-pill">${esc(pill)}</span>` : ''}${link}</div>
+      </div>
+      <div class="money huge ${red ? 'red' : ''}">${num(key, amount)}</div>
+      ${text ? `<p class="page-text">${esc(text)}</p>` : ''}
+      ${tabs.length > 1 ? chips(tabs, tab, 'page-tab', 'Sections', 'tab', 'tablist') : ''}
+      <div class="page-body">${body[tab]}</div>
+    </div>
+    <div class="fixed-bar">${action}</div>
+  </div>`;
+}
+
+function budgetPage(sh, state, today) {
   const pid = B.periodIdOf(today);
   const p = B.periodSummary(state, pid, today);
   const key = esc(refKey({ type: 'budget', periodId: pid }));
-  return `<div class="inner">
-    ${pageHead('Budget')}
-    ${pageHero(p.level === 'over' ? 'Over budget' : 'Left this month', p.remaining, B.periodLabel(pid))}
-    <div class="card" style="padding-top:6px;padding-bottom:6px">
-      <div class="kv"><span>Budget</span><span>${fmt(p.opening)}</span></div>
-      ${p.transfersIn ? `<div class="kv"><span>Moved in</span><span class="green">+${fmt(p.transfersIn)}</span></div>` : ''}
-      ${p.transfersOut ? `<div class="kv"><span>Moved out</span><span>${fmt(p.transfersOut)}</span></div>` : ''}
-      <div class="kv"><span>Spent</span><span>${fmt(p.spent)}</span></div>
-      <div class="kv"><span>Per day left</span><span>${fmt(p.perDayLeft)}</span></div>
-    </div>
-    <div class="btn-row">
-      <button class="btn soft" data-act="transfer" data-to="${key}">${icon.up(16)} Add money</button>
-      <button class="btn soft" data-act="transfer" data-from="${key}">${icon.swap(16)} Move money</button>
-    </div>
-    <button class="btn soft wide" data-act="goto" data-tab="insights">${icon.chart(16)} See spending</button>
-    <div class="card list-card"><div class="card-label">${icon.swap(14)}<span>Moves this month</span></div>${activityList(state, { type: 'budget', periodId: pid }, today)}</div>
-  </div>`;
+  const pct = p.total > 0 ? Math.round((p.spent / p.total) * 100) : 0;
+  const items = budgetItems(state, pid);
+  const days = [];
+  for (const it of items) {
+    const last = days.at(-1);
+    if (last && last.date === it.date) last.items.push(it);
+    else days.push({ date: it.date, items: [it] });
+  }
+  const lumps = state.lumpSums.filter((l) => l.firstPeriod <= pid && B.shiftPeriod(l.firstPeriod, l.months - 1) >= pid);
+  const override = state.baseOverrides?.[pid];
+  return page(sh, {
+    title: 'Budget', status: statusLine(...level(p)), key: 'page-budget', amount: p.remaining, red: p.level === 'over',
+    pill: `${pct}% spent`, link: '<button class="link" data-act="goto" data-tab="insights">See spending</button>',
+    text: `Left this month, ${rangeLabel(pid)}. ${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'} left.`,
+    tabs: [['activity', 'Activity'], ['details', 'Details'], ['plans', 'Plans']],
+    body: {
+      activity: days.length ? `<div class="acc-list">${days.map((x, i) => dayAccordion(x.date, x.items, today, i === 0)).join('')}</div>` : '<p class="empty">No activity yet.</p>',
+      details: `${kvCard([
+        ['Budget', fmt(p.opening)],
+        p.transfersIn ? ['Moved in', `+${fmt(p.transfersIn)}`, 'green'] : null,
+        p.transfersOut ? ['Moved out', fmt(p.transfersOut)] : null,
+        ['Spent', fmt(p.spent)],
+        ['Per day left', fmt(p.perDayLeft)],
+      ])}<button class="btn secondary wide" data-act="transfer" data-to="${key}">${icon.up(16)} Add money</button>`,
+      plans: `<div class="card list-card"><div class="list">
+        ${override !== undefined ? `<div class="row"><div class="grow"><div class="title">Budget set for this month</div><div class="sub">${fmt(override)}</div></div></div>` : ''}
+        ${lumps.map((l) => `<div class="row"><div class="grow"><div class="title">Lump sum from ${esc(periodLabelLong(l.firstPeriod).split(' to ')[0])}</div><div class="sub">${fmt(l.amount)} over ${l.months} months, rent ${fmt(l.rentPerMonth)}</div></div></div>`).join('')}
+        ${override === undefined && !lumps.length ? '<p class="empty">No plan covers this month.</p>' : ''}
+      </div></div><button class="btn secondary wide" data-act="goto" data-tab="settings">Open Plans</button>`,
+    },
+    headAct: `<button class="round on-dark" data-act="transfer" data-from="${key}" aria-label="Transfer">${icon.swap(20)}</button>`,
+    action: `<button class="btn wide fixed-pill" data-act="transfer" data-from="${key}">Move money</button>`,
+  });
 }
 
-function salaryPage(state) {
+function salaryPage(sh, state) {
   const sal = B.potLedger(state);
   const pots = [...sal.pots].reverse();
-  return `<div class="inner">
-    ${pageHead('Salary')}
-    ${pageHero('Total salary', sal.totals.balance, `${fmt(sal.totals.reserved)} for stocks · ${fmt(sal.totals.free)} free`)}
-    <div class="btn-row">
-      <button class="btn" data-act="log-salary">${icon.plus(16)} Log salary</button>
-      <button class="btn soft" data-act="transfer" data-to="stocks">${icon.stocks(16)} To stocks</button>
-    </div>
-    <div class="card list-card"><div class="card-label">${icon.bolt()}<span>Each month's pay</span></div><div class="list">
-      ${pots.map((x) => listRow({
-    title: x.label || 'Salary',
-    sub: [x.receivedOn ? `Received ${B.dm(x.receivedOn)}` : '', x.reserved > 0.004 ? `${fmt(x.reserved)} for stocks` : ''].filter(Boolean).join(' · '),
-    amount: x.balance, act: `data-act="open-pot" data-id="${esc(x.id)}"`,
-  })).join('') || '<div class="empty">No salary logged yet.</div>'}
-    </div></div>
-  </div>`;
+  return page(sh, {
+    title: 'Salary', status: statusLine(sal.totals.reserved > 0.004 ? 'amber' : 'green', sal.totals.reserved > 0.004 ? `${fmt(sal.totals.reserved)} still for stocks` : 'Stocks are up to date'),
+    key: 'page-salary', amount: sal.totals.balance, pill: `${fmt(sal.totals.free)} free`,
+    link: '<button class="link" data-act="transfer" data-to="stocks">To stocks</button>',
+    text: `${fmt(sal.totals.reserved)} for stocks · ${fmt(sal.totals.free)} free`,
+    tabs: [['activity', 'Activity'], ['details', 'Details'], ['plans', 'Plans']],
+    body: {
+      activity: `<div class="card list-card"><div class="list">${pots.map((x) => listRow({
+        title: x.label || 'Salary',
+        sub: [x.receivedOn ? `Received ${B.dm(x.receivedOn)}` : '', x.reserved > 0.004 ? `${fmt(x.reserved)} for stocks` : ''].filter(Boolean).join(' · '),
+        amount: x.balance, act: `data-act="open-pot" data-id="${esc(x.id)}"`,
+      })).join('') || '<p class="empty">No salary logged yet.</p>'}</div></div>`,
+      details: kvCard([['Total salary', fmt(sal.totals.balance)], ['For stocks', fmt(sal.totals.reserved)], ['Free', fmt(sal.totals.free)], ["Each month's pay", String(pots.length)]]),
+      plans: `<div class="card list-card"><div class="list"><button class="row set-row" data-act="open-form" data-form-type="stockMin"><div class="grow"><div class="title">Minimum from each salary</div><div class="sub">Kept for stocks</div></div><div class="amt">${fmt(state.settings.stockMin)}</div><span class="chev">${icon.right(18)}</span></button></div></div>`,
+    },
+    headAct: `<button class="round on-dark" data-act="transfer" data-to="stocks" aria-label="Transfer to stocks">${icon.swap(20)}</button>`,
+    action: `<button class="btn wide fixed-pill" data-act="log-salary">${icon.plus(16)} Log salary</button>`,
+  });
 }
 
-function otherPage(state) {
+function otherPage(sh, state) {
   const oth = B.bucketLedger(state);
-  return `<div class="inner">
-    ${pageHead('Other expenses')}
-    ${pageHero('Total set aside', oth.totals.balance)}
-    <button class="btn wide" data-act="new-bucket">${icon.plus(16)} New category</button>
-    <div class="card list-card"><div class="card-label">${icon.list()}<span>Categories</span></div><div class="list">
-      ${oth.buckets.map((b) => listRow({
-    title: b.name, sub: b.spent > 0.004 ? `${fmt(b.spent)} spent` : '', amount: b.balance,
-    act: `data-act="open-bucket" data-id="${esc(b.id)}"`,
-  })).join('') || '<div class="empty">No categories yet.</div>'}
-    </div></div>
-  </div>`;
+  const spent = oth.buckets.reduce((a, b) => a + b.spent, 0);
+  return page(sh, {
+    title: 'Other expenses', status: statusLine('green', `${oth.buckets.length} categor${oth.buckets.length === 1 ? 'y' : 'ies'}`),
+    key: 'page-other', amount: oth.totals.balance, pill: 'Total set aside',
+    text: oth.buckets.map((b) => b.name).join(', ') || 'No categories yet',
+    tabs: [['activity', 'Categories'], ['details', 'Details']],
+    body: {
+      activity: `<div class="card list-card"><div class="list">${oth.buckets.map((b) => listRow({
+        title: b.name, sub: b.spent > 0.004 ? `${fmt(b.spent)} spent` : '', amount: b.balance,
+        act: `data-act="open-bucket" data-id="${esc(b.id)}"`,
+      })).join('') || '<p class="empty">No categories yet.</p>'}</div></div>`,
+      details: kvCard([['Total set aside', fmt(oth.totals.balance)], ['Spent from it', fmt(spent)]]),
+    },
+    headAct: `<button class="round on-dark" data-act="transfer" aria-label="Transfer">${icon.swap(20)}</button>`,
+    action: `<button class="btn wide fixed-pill" data-act="new-bucket">${icon.plus(16)} New category</button>`,
+  });
 }
 
-function stocksPage(state, today) {
+function stocksPage(sh, state, today) {
   const st = B.stocksSummary(state);
   const deposits = [...st.deposits].reverse();
-  return `<div class="inner">
-    ${pageHead('Stocks')}
-    ${pageHero('Sent so far', st.sent, `${fmt(st.stillFromSalary)} still to send from salary`)}
-    <button class="btn wide" data-act="transfer" data-to="stocks">${icon.stocks(16)} Send to stocks</button>
-    <div class="card list-card"><div class="card-label">${icon.pie()}<span>Sent</span></div><div class="list">
-      ${deposits.map((t) => listRow({
-    title: `From ${B.accountName(state, t.from)}`,
-    sub: [t.date ? dayLabel(t.date, today) : 'Before the app', t.note].filter(Boolean).join(' · '),
-    amount: t.amount, act: `data-act="open-transfer" data-id="${esc(t.id)}"`,
-  })).join('') || '<div class="empty">Nothing sent yet.</div>'}
-    </div></div>
-  </div>`;
+  const target = st.sent + st.stillFromSalary;
+  return page(sh, {
+    title: 'Stocks', status: statusLine(st.stillFromSalary > 0.004 ? 'amber' : 'green', st.stillFromSalary > 0.004 ? `${fmt(st.stillFromSalary)} still to send` : 'All sent'),
+    key: 'page-stocks', amount: st.sent, pill: target > 0 ? `${Math.round((st.sent / target) * 100)}% sent` : 'Sent so far',
+    text: `Sent so far · ${fmt(st.stillFromSalary)} still to send from salary`,
+    tabs: [['activity', 'Activity'], ['details', 'Details'], ['plans', 'Plans']],
+    body: {
+      activity: `<div class="card list-card"><div class="list">${deposits.map((t) => listRow({
+        title: `From ${B.accountName(state, t.from)}`,
+        sub: [t.date ? dayLabel(t.date, today) : 'Before the app', t.note].filter(Boolean).join(' · '),
+        amount: t.amount, act: `data-act="open-transfer" data-id="${esc(t.id)}"`,
+      })).join('') || '<p class="empty">Nothing sent yet.</p>'}</div></div>`,
+      details: kvCard([['Sent so far', fmt(st.sent)], ['Still to send', fmt(st.stillFromSalary)]]),
+      plans: `<div class="card list-card"><div class="list"><button class="row set-row" data-act="open-form" data-form-type="stockMin"><div class="grow"><div class="title">Minimum from each salary</div></div><div class="amt">${fmt(state.settings.stockMin)}</div><span class="chev">${icon.right(18)}</span></button></div></div>`,
+    },
+    headAct: `<button class="round on-dark" data-act="transfer" data-to="stocks" aria-label="Transfer to stocks">${icon.swap(20)}</button>`,
+    action: `<button class="btn wide fixed-pill" data-act="transfer" data-to="stocks">${icon.stocks(16)} Send to stocks</button>`,
+  });
 }
 
 // ---- Small forms ----------------------------------------------------------------
@@ -365,120 +423,68 @@ function doneSheet(sh) {
   </div>`;
 }
 
-// ---- Step screens (Settings) ----------------------------------------------------
-// Multi-field settings become full-screen steps with a ruler you drag under a fixed needle.
-// Each step edits one field; the last step saves through the same core calls the old forms used.
+// ---- Settings forms (bottom sheets) ---------------------------------------------
 
-export const FLOWS = {
-  stockMin: {
-    save: 'Save',
-    steps: [{ field: 'stockMin', kind: 'amount', title: ['Stock Money', 'Each Salary'], sub: 'Kept from every salary you log, for stocks.', max: 3000, step: 10 }],
-  },
-  rent: {
-    save: 'Save',
-    steps: [{ field: 'rentPerMonth', kind: 'amount', title: ['Set Your', 'Rent'], sub: "We'll take it out before you spend.", unit: '/ month', max: 5000, step: 5 }],
-  },
-  override: {
-    save: 'Save',
-    steps: [
-      { field: 'periodId', kind: 'month', title: ['Pick The', 'Month'], sub: 'The month that gets its own budget.' },
-      { field: 'amount', kind: 'amount', title: ['Set Your', 'Budget'], sub: "We'll use this instead of the lump sum split.", unit: '/ month', max: 5000, step: 5, preview: 'day' },
-    ],
-  },
-  lump: {
-    save: 'Add lump sum',
-    steps: [
-      { field: 'firstPeriod', kind: 'month', title: ['First', 'Month'], sub: 'The first month this money covers.' },
-      { field: 'months', kind: 'count', title: ['How Many', 'Months?'], sub: 'How long the money has to last.', unit: 'months', min: 1, max: 12, step: 1 },
-      { field: 'amount', kind: 'amount', title: ['Set Your', 'Budget'], sub: "The whole amount for all the months. We'll split it across them for you.", max: 30000, step: 50, preview: 'lump' },
-      { field: 'rentPerMonth', kind: 'amount', title: ['Set Your', 'Rent'], sub: "We'll take it out before you spend.", unit: '/ month', max: 5000, step: 5, preview: 'lump' },
-    ],
-  },
-};
+function periodOptions(today, selected, back = 12, ahead = 12) {
+  const cur = B.periodIdOf(today);
+  const opts = [];
+  for (let k = -back; k <= ahead; k++) {
+    const id = B.shiftPeriod(cur, k);
+    opts.push(`<option value="${id}" ${id === selected ? 'selected' : ''}>${esc(periodLabelLong(id))}${id === cur ? ' (now)' : ''}</option>`);
+  }
+  return opts.join('');
+}
 
-export function flowStart(flow, state, today) {
+function formSheet(sh, state, today) {
   const s = state.settings;
   const cur = B.periodIdOf(today);
-  const vals = {
-    stockMin: { stockMin: s.stockMin ?? 0 },
-    rent: { rentPerMonth: s.rentPerMonth ?? 0 },
-    override: { periodId: cur, amount: 0 },
-    lump: { firstPeriod: cur, months: 3, amount: 0, rentPerMonth: s.rentPerMonth ?? 0 },
-  }[flow];
-  return { type: 'flow', flow, step: 0, vals, manual: false };
-}
-
-const TICK = 8; // px between ruler ticks
-export const rulerMin = (st) => st.min ?? 0;
-export const rulerCount = (st) => Math.round((st.max - rulerMin(st)) / st.step);
-
-export function pickText(st, v) {
-  if (st.kind === 'count') return String(Math.round(v));
-  return fmt(v).replace(/\.00$/, '');
-}
-
-// "That gives you $x a month" under the ruler, from the same sum the Plans list shows.
-export function flowPreview(sh, st) {
-  const v = sh.vals;
-  if (st.preview === 'lump' && v.months > 0 && v.amount > 0) {
-    return `That gives you ${fmt((v.amount - (v.rentPerMonth || 0) * v.months) / v.months)} a month`;
-  }
-  if (st.preview === 'day' && v.amount > 0) {
-    const days = B.periodRange(v.periodId);
-    const n = Math.round((new Date(days.end) - new Date(days.start)) / 864e5);
-    return `About ${fmt(v.amount / n)} a day`;
-  }
-  return '';
-}
-
-export const flowReady = (sh, st) => st.kind !== 'amount' || Number(sh.vals[st.field]) > 0;
-
-function flowSheet(sh, state, today) {
-  const def = FLOWS[sh.flow];
-  const st = def.steps[sh.step];
-  const last = sh.step === def.steps.length - 1;
-  const v = sh.vals[st.field];
-  const dots = def.steps.length > 1
-    ? `<div class="dots" aria-label="Step ${sh.step + 1} of ${def.steps.length}">${def.steps.map((_, i) => `<i class="${i === sh.step ? 'on' : ''}"></i>`).join('')}</div>` : '';
-  let body;
-  if (st.kind === 'month') {
-    const cur = B.periodIdOf(today);
-    const ids = [];
-    for (let k = -3; k <= 9; k++) ids.push(B.shiftPeriod(cur, k));
-    body = `<div class="card list-card month-pick"><div class="list">${ids.map((id) => `<button class="row ${id === v ? 'picked' : ''}" data-act="flow-pick" data-v="${id}" aria-pressed="${id === v}">
-      <div class="grow"><div class="title">${esc(B.periodLabel(id))}</div>${id === cur ? '<div class="sub">This month</div>' : ''}</div>
-      <span class="radio">${id === v ? icon.check(14) : ''}</span></button>`).join('')}</div></div>`;
-  } else {
-    const n = rulerCount(st);
-    const ticks = Array.from({ length: n + 1 }, (_, i) => `<i class="${i % 10 === 0 ? 'l' : i % 5 === 0 ? 'm' : ''}"></i>`).join('');
-    body = `<div class="picker">
-      <button class="pick-value" data-act="flow-manual" aria-label="Type the amount"><span data-pick-text>${esc(pickText(st, v))}</span>${st.unit ? ` <span class="unit">${esc(st.unit)}</span>` : ''}</button>
-      <input class="input pick-input" data-pick-input inputmode="${st.kind === 'count' ? 'numeric' : 'decimal'}" value="${v || ''}" placeholder="0" ${sh.manual ? '' : 'hidden'} aria-label="${esc(st.title.join(' '))}">
-      <div class="ruler-wrap">
-        <div class="ruler-pick" data-ruler tabindex="0" role="slider" aria-label="${esc(st.title.join(' '))}"
-          aria-valuemin="${rulerMin(st)}" aria-valuemax="${st.max}" aria-valuenow="${v}" aria-valuetext="${esc(pickText(st, v))}"
-          data-min="${rulerMin(st)}" data-step="${st.step}" data-tick="${TICK}">
-          <div class="ruler-track">${ticks}</div>
-        </div>
-        <i class="needle" aria-hidden="true"></i>
+  const bigField = (name, label, value, placeholder = '0.00') => `<label class="big-field"><span class="sub">${esc(label)}</span>
+    <span class="big-input-wrap"><span class="big-cur">$</span><input class="big-input" name="${name}" inputmode="decimal" value="${esc(value ?? '')}" placeholder="${esc(placeholder)}" autocomplete="off"></span></label>`;
+  const forms = {
+    stockMin: ['Minimum from each salary', `<form class="form" data-form="stockMin">
+      ${bigField('stockMin', 'Kept for stocks from each salary you log', s.stockMin)}
+      <p class="sub">Salary already logged keeps its own minimum.</p>
+      <div class="fixed-bar"><button class="btn wide fixed-pill">Save</button></div></form>`],
+    rent: ['Rent', `<form class="form" data-form="rent">
+      ${bigField('rentPerMonth', 'Rent per month', s.rentPerMonth ?? '', 'From the lump sum')}
+      <label class="field"><span>Remind me</span><select class="input" name="rentRemindDays">${[0, 1, 2, 3, 4, 5, 6, 7].map((n) => `<option value="${n}" ${n === s.rentRemindDays ? 'selected' : ''}>${n === 0 ? 'On the day' : `${n} day${n === 1 ? '' : 's'} before`}</option>`).join('')}</select></label>
+      <div class="fixed-bar"><button class="btn wide fixed-pill">Save rent settings</button></div></form>`],
+    lump: ['Add a lump sum', `<form class="form" data-form="lump">
+      ${bigField('amount', 'Amount', '')}
+      <label class="field"><span>First month</span><select class="input" name="firstPeriod">${periodOptions(today, cur)}</select></label>
+      <div class="inline">
+        <label class="field"><span>Months</span><input class="input" name="months" inputmode="numeric" value="3"></label>
+        <label class="field"><span>Rent per month</span><input class="input" name="rentPerMonth" inputmode="decimal" value="${esc(s.rentPerMonth ?? '')}"></label>
       </div>
-      <div class="pick-preview" data-pick-preview>${esc(flowPreview(sh, st))}</div>
-    </div>`;
-  }
-  return `<div class="inner flow">
-    <div class="flow-top">
-      <button class="icon-btn tile" data-act="${sh.step ? 'flow-back' : 'close-sheet'}" aria-label="${sh.step ? 'Back' : 'Close'}">${sh.step ? icon.left() : icon.close()}</button>
-      <div class="brand">${logo(22)}<span>Budget</span></div>
-      ${dots || '<span class="ghost"></span>'}
-    </div>
-    <h1 class="flow-title">${esc(st.title[0])}<br>${esc(st.title[1])}</h1>
-    <p class="sub flow-sub">${esc(st.sub)}</p>
-    ${body}
-    <div class="flow-actions">
-      ${st.kind === 'month' ? '' : '<button class="btn secondary wide" data-act="flow-manual">Enter manually</button>'}
-      <button class="btn primary wide" data-act="flow-next" ${flowReady(sh, st) ? '' : 'disabled'}>${last ? esc(def.save) : 'Continue'} ${icon.arrow(18)}</button>
-    </div>
+      <div class="fixed-bar"><button class="btn wide fixed-pill">Add lump sum</button></div></form>`],
+    override: ["Set one month's budget", `<form class="form" data-form="override">
+      ${bigField('amount', 'Budget', '')}
+      <label class="field"><span>Month</span><select class="input" name="periodId">${periodOptions(today, cur)}</select></label>
+      <div class="fixed-bar"><button class="btn wide fixed-pill">Save</button></div></form>`],
+  };
+  const [title, body] = forms[sh.form];
+  return `<div class="inner">${head(title)}${body}</div>`;
+}
+
+// ---- Rent options and the Week / Month picker -------------------------------------
+
+function rentOptionsSheet(sh, state, today) {
+  const r = B.dashboard(state, today).rent;
+  const text = {
+    overdue: `Was due ${dMon(r.dueDate ?? today)}, ${r.daysLate} day${r.daysLate === 1 ? '' : 's'} ago`,
+    'due-today': 'Due today',
+    upcoming: `Due ${r.daysUntil === 1 ? 'tomorrow' : `in ${r.daysUntil} days`}, ${dMon(r.dueDate ?? today)}`,
+    none: 'Paid for this month',
+  }[r.status];
+  return `<div class="inner">${head('Rent')}
+    <div class="opt-top"><span class="sub">${esc(text)}</span>${r.amount ? `<span class="tag gold">${fmt(r.amount)}</span>` : ''}</div>
+    <button class="btn chip-btn-wide wide" data-act="open-form" data-form-type="rent">Rent settings</button>
+    <div class="fixed-bar"><button class="btn gold wide fixed-pill" data-act="rent-paid" data-period="${esc(sh.period)}">Mark paid</button></div>
   </div>`;
+}
+
+function modeSheet(sh) {
+  return `<div class="inner">${head('Show by')}${chips([['week', 'Week'], ['month', 'Month']], sh.mode, 'set-mode', 'Show by')}<p class="sub">Week shows Monday to Sunday. Month follows your budget month.</p></div>`;
 }
 
 // ---- Dispatcher -----------------------------------------------------------------
@@ -494,11 +500,13 @@ export function renderSheet(sh, state, today) {
     case 'bucket-form': return bucketFormSheet(sh, state);
     case 'done': return doneSheet(sh);
     case 'note': return noteSheet(sh, state);
-    case 'flow': return flowSheet(sh, state, today);
-    case 'page-budget': return budgetPage(state, today);
-    case 'page-salary': return salaryPage(state);
-    case 'page-other': return otherPage(state);
-    case 'page-stocks': return stocksPage(state, today);
+    case 'form': return formSheet(sh, state, today);
+    case 'rent-options': return rentOptionsSheet(sh, state, today);
+    case 'mode': return modeSheet(sh);
+    case 'page-budget': return budgetPage(sh, state, today);
+    case 'page-salary': return salaryPage(sh, state);
+    case 'page-other': return otherPage(sh, state);
+    case 'page-stocks': return stocksPage(sh, state, today);
     default: return null;
   }
 }

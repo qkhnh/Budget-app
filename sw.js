@@ -7,7 +7,7 @@
 // - Offline: serve the saved copy.
 // Budget data is NOT stored here. It lives in localStorage, which this file never touches.
 
-const CACHE = 'budget-shell-v3'; // bump when the list below changes
+const CACHE = 'budget-shell-roam1'; // bump when the list below changes
 const SHELL = [
   './',
   './index.html',
@@ -16,8 +16,7 @@ const SHELL = [
   './views.js',
   './sheets.js',
   './styles.css',
-  './motion.js',
-  './fonts/plus-jakarta-sans-latin-wght.woff2',
+  './fonts/urbanist-latin-wght.woff2',
   './budget-core.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
